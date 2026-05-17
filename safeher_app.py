@@ -13,7 +13,7 @@ warnings.filterwarnings('ignore')
 # CARGAR MODELOS Y DATOS
 # ─────────────────────────────────────────
 import os
-BASE = '/mnt/user-data/uploads'
+BASE = os.path.dirname(os.path.abspath(__file__))
 
 df_geo = pd.read_excel(f'{BASE}/departamentos_municipios_unicos.xlsx')
 DEPTOS = sorted(df_geo['DEPARTAMENTO_HECHO'].unique().tolist())
@@ -1190,3 +1190,4 @@ def manejar_chat(n_btn, n_sub, q0,q1,q2,q3, texto, historia):
 # ─────────────────────────────────────────
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=8050)
+    server = app.server
