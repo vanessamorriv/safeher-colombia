@@ -576,7 +576,7 @@ with st.sidebar:
     st.markdown("""<div style='padding:12px 10px 6px;'>
         <div style='font-size:9px;color:#C4B5FD;font-weight:800;letter-spacing:2px;
             text-transform:uppercase;padding:0 8px;margin-bottom:6px;'>Navegación</div>
-    """, unsafe_allow_html=True)
+    </div>""", unsafe_allow_html=True)
     nav_options = [
         "🏠  Inicio",
         "📊  Predicción ML",
@@ -593,7 +593,6 @@ with st.sidebar:
     if "nav_page" in st.session_state:
         del st.session_state["nav_page"]
     page = st.radio("nav", options=nav_options, index=default_nav, label_visibility="collapsed")
-    st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("""
     <div style="padding:10px 12px 16px;border-top:1.5px solid #EDE9FE;margin-top:auto;">
@@ -753,7 +752,6 @@ elif "📊" in page:
         etario = st.selectbox("🎂 Grupo Etario", ["DE 0 A 17 AÑOS","DE 18 A 26 AÑOS","DE 27 A 59 AÑOS","DE 60 Y MÁS"], index=2)
 
     predict_btn = st.button("🔮 Ejecutar Predicción ML", type="primary", key="predict_btn")
-    st.markdown('</div>', unsafe_allow_html=True)
 
     if predict_btn or st.session_state.get('pred_result'):
         if predict_btn:
@@ -989,7 +987,6 @@ elif "📊" in page:
                         <div style="width:{item['value']/max_v*100:.0f}%;height:100%;background:linear-gradient(90deg,{cfg['color']}88,{cfg['color']});border-radius:6px;transition:width 0.6s ease;"></div>
                     </div>
                 </div>""", unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
 
             # AI Interpretation
             st.markdown("""
@@ -1328,7 +1325,6 @@ elif "🗺️" in page:
                         border-radius:8px;transition:width 0.5s ease;"></div>
                 </div>
             </div>""", unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
 
     with col_detail:
         sel_name = st.session_state.get("selected_dep")
@@ -1388,8 +1384,6 @@ elif "🗺️" in page:
                     <span style="font-size:11px;color:#1E1B4B;">{h_label}</span>
                     {risk_badge(h_risk, small=True)}
                 </div>""", unsafe_allow_html=True)
-
-            st.markdown('</div>', unsafe_allow_html=True)
 
             if st.button(f"🤖 Análisis IA completo de {sel_name}", key="ai_map_btn", use_container_width=True, type="primary"):
                 with st.spinner("Analizando con IA..."):
@@ -1488,7 +1482,6 @@ elif "✈️" in page:
                     <div style="font-size:11px;color:#A78BFA;font-weight:600;margin-bottom:4px;">Municipios cubiertos en el análisis</div>
                     <div style="font-size:26px;font-weight:900;color:#5B21B6;font-family:Georgia,serif;">{vr['data']['municipios']}</div>
                 </div>""", unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
 
             with col_b:
                 st.markdown('<div class="sh-card">', unsafe_allow_html=True)
@@ -1511,7 +1504,6 @@ elif "✈️" in page:
                             <div style="width:{item['sc']/max_sc*100:.0f}%;height:100%;background:{cfg['color']};border-radius:6px;"></div>
                         </div>
                     </div>""", unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
 
             # AI Travel Tips
             st.markdown('<div class="sh-card">', unsafe_allow_html=True)
@@ -1526,7 +1518,6 @@ elif "✈️" in page:
                     st.session_state["viaje_tips"] = tips
             tips_text = st.session_state.get("viaje_tips", "")
             st.markdown(f'<div style="font-size:13px;color:#1E1B4B;line-height:1.85;white-space:pre-wrap;background:linear-gradient(135deg,#F5F3FF,#EDE9FE);border-radius:14px;padding:18px;border:1px solid #C4B5FD;">{tips_text}</div>', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
 
 # ── EMERGENCIAS ────────────────────────────────────────────────────────────────
 elif "🚨" in page:
@@ -1777,8 +1768,6 @@ Opciones seleccionadas: {', '.join(d_opts) if d_opts else 'Ninguna'}"""
                         st.session_state["legal_text"] = legal_text
                     st.rerun()
 
-            st.markdown('</div>', unsafe_allow_html=True)
-
         with col_info:
             st.markdown("""<div class="sh-card">
                 <div style="font-size:13px;font-weight:800;color:#5B21B6;margin-bottom:16px;">🏢 Entidades Oficiales</div>""", unsafe_allow_html=True)
@@ -1799,7 +1788,6 @@ Opciones seleccionadas: {', '.join(d_opts) if d_opts else 'Ninguna'}"""
                         <div style="font-size:10px;color:#A78BFA;font-weight:500;">{desc_e}</div>
                     </div>
                 </div></a>""", unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
 
             st.markdown("""<div style="background:linear-gradient(135deg,#FFFBEB,#FEF3C7);border:1.5px solid #FCD34D;
                 border-radius:16px;padding:16px;font-size:12px;color:#92400E;line-height:1.75;margin-bottom:14px;">
@@ -1920,7 +1908,6 @@ FORMATO: Español cálido y cercano, máx 200 palabras, emojis con moderación (
             st.markdown(f'<div style="display:flex;gap:9px;margin-bottom:9px;align-items:flex-start;">'
                        f'<span style="font-size:15px;line-height:1.4;">{ic}</span>'
                        f'<span style="font-size:11px;color:#6B7280;line-height:1.5;">{txt}</span></div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
 
         st.markdown("""<div style="background:linear-gradient(135deg,#FFF1F2,#FEE2E2);border:1.5px solid #FECDD3;
             border-radius:16px;padding:16px;margin-top:4px;">
@@ -1930,7 +1917,6 @@ FORMATO: Español cálido y cercano, máx 200 palabras, emojis con moderación (
                        f'<span style="font-size:18px;color:#BE123C;font-weight:900;font-family:Georgia,serif;">{num}</span>'
                        f'<div style="text-align:right;"><div style="font-size:11px;color:#DC2626;font-weight:700;">{desc}</div>'
                        f'<div style="font-size:9px;color:#9F1239;font-weight:500;">{sub}</div></div></a>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
 
     with col_chat:
         # Header
@@ -1998,7 +1984,6 @@ FORMATO: Español cálido y cercano, máx 200 palabras, emojis con moderación (
                         reply = call_claude(SARA_SYSTEM, "", history=history)
                     st.session_state.sara_messages.append({"role": "assistant", "content": reply})
                     st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
 
         # Input form
         st.markdown('<div style="background:#fff;border:1px solid #EDE9FE;border-radius:0 0 22px 22px;padding:14px 24px;">', unsafe_allow_html=True)
@@ -2016,7 +2001,6 @@ FORMATO: Español cálido y cercano, máx 200 palabras, emojis con moderación (
                 reply = call_claude(SARA_SYSTEM, "", history=history)
             st.session_state.sara_messages.append({"role": "assistant", "content": reply})
             st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
 
         col_clear, col_info_sara = st.columns([1, 2])
         with col_clear:
@@ -2156,7 +2140,6 @@ elif "🚔" in page:
                     <div style="font-size:11px;font-weight:800;color:#5B21B6;margin-bottom:8px;">🧭 Instrucciones de SARA</div>
                     <div style="font-size:11px;color:#1E1B4B;line-height:1.8;white-space:pre-wrap;">{dir_r}</div>
                 </div>""", unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
         else:
             st.markdown("""<div style="background:linear-gradient(135deg,#F5F3FF,#EDE9FE);border-radius:20px;
                 border:2px dashed #C4B5FD;padding:48px 24px;text-align:center;">
@@ -2202,7 +2185,6 @@ elif "ℹ️" in page:
                     display:flex;align-items:center;justify-content:center;font-size:18px;">👩‍🎓</div>
                 <span style="font-size:13px;color:#1E1B4B;font-weight:700;">{name}</span>
             </div>""", unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
 
         st.markdown("""<div class="sh-card">
             <div style="font-weight:800;color:#5B21B6;font-size:16px;margin-bottom:16px;">🤖 Modelos de Machine Learning</div>""", unsafe_allow_html=True)
@@ -2218,7 +2200,6 @@ elif "ℹ️" in page:
                 <div style="font-size:12px;color:{co};margin-top:3px;font-weight:600;">{al}</div>
                 <div style="font-size:11px;color:#6B7280;margin-top:2px;">Target: {ta}</div>
             </div>""", unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
 
     with col_r:
         st.markdown("""<div style="background:linear-gradient(135deg,#FFFBEB,#FEF3C7);border:1.5px solid #FCD34D;
@@ -2245,7 +2226,6 @@ elif "ℹ️" in page:
                     <div style="width:{pct};height:100%;background:linear-gradient(90deg,{color}80,{color});border-radius:8px;"></div>
                 </div>
             </div>""", unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
 
         st.markdown('<div class="sh-card">', unsafe_allow_html=True)
         st.markdown('<div style="font-weight:800;color:#5B21B6;font-size:14px;margin-bottom:14px;">📊 Cobertura del Sistema</div>', unsafe_allow_html=True)
@@ -2256,7 +2236,6 @@ elif "ℹ️" in page:
                 <span style="color:#6B7280;font-weight:500;">{k}</span>
                 <span style="color:#1E1B4B;font-weight:800;">{v}</span>
             </div>""", unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
 
         # API Key info box
         st.markdown("""<div style="background:linear-gradient(135deg,#F5F3FF,#EDE9FE);border:1.5px solid #C4B5FD;
