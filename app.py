@@ -1089,7 +1089,7 @@ elif "🗺️" in page:
         else:
             df_map_vis = df_map.copy()
 
-        # Mapa con px.scatter_geo — API más estable y compatible
+        # Mapa con px.scatter_geo — sin update_layout geo para máxima compatibilidad
         import plotly.express as px
         fig_map = px.scatter_geo(
             df_map_vis,
@@ -1098,45 +1098,27 @@ elif "🗺️" in page:
             size="Tamaño",
             color="Score",
             hover_name="Departamento",
-            hover_data={"Score": ":.1f", "Zona": True, "Gravedad": True,
-                        "Municipios": True, "lat": False, "lon": False,
-                        "Tamaño": False, "Color": False, "Label": False},
+            hover_data={
+                "Zona": True,
+                "Gravedad": True,
+                "Municipios": True,
+                "lat": False,
+                "lon": False,
+                "Tamaño": False,
+                "Color": False,
+                "Label": False,
+            },
             color_continuous_scale=[
                 [0.0, "#10B981"], [0.3, "#3B82F6"],
                 [0.55, "#F59E0B"], [0.70, "#EF4444"],
-                [0.85, "#DC2626"], [1.0, "#7F1D1D"]
+                [0.85, "#DC2626"], [1.0, "#7F1D1D"],
             ],
             range_color=[1.5, 5.0],
             size_max=38,
-            labels={"Score": "Score Riesgo"},
             scope="south america",
         )
-        fig_map.update_traces(
-            marker=dict(opacity=0.85, line=dict(color="white", width=1)),
-            selector=dict(type="scattergeo")
-        )
-        fig_map.update_layout(
-            height=520,
-            margin=dict(l=0, r=0, t=0, b=0),
-            paper_bgcolor="rgba(0,0,0,0)",
-            coloraxis_colorbar=dict(
-                title="Score", thickness=12, len=0.55,
-                tickfont=dict(size=10), titlefont=dict(size=11),
-                x=1.0
-            ),
-            geo=dict(
-                showland=True, landcolor="#EEF2FF",
-                showocean=True, oceancolor="#DBEAFE",
-                showcoastlines=True, coastlinecolor="#93C5FD",
-                showborders=True, bordercolor="#C4B5FD",
-                showcountries=True, countrycolor="#A78BFA",
-                showlakes=True, lakecolor="#BFDBFE",
-                lonaxis_range=[-82, -66],
-                lataxis_range=[-5, 13],
-                bgcolor="rgba(239,246,255,0.4)",
-            ),
-        )
-        st.plotly_chart(fig_map, use_container_width=True, config={"displayModeBar": False, "scrollZoom": True})
+        fig_map.update_layout(height=520, margin={"l":0,"r":0,"t":0,"b":0})
+        st.plotly_chart(fig_map, use_container_width=True, config={"displayModeBar": False})
         st.markdown('<div style="font-size:11px;color:#6B7280;text-align:center;margin-top:-8px;">Burbujas proporcionales al score de riesgo · Pasa el cursor para ver detalles · Selecciona departamento en la lista de abajo</div>', unsafe_allow_html=True)
 
         # Leyenda del mapa
