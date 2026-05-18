@@ -1,5 +1,4 @@
 import streamlit as st
-import folium
 import random
 import math
 import os
@@ -61,34 +60,37 @@ header {visibility: hidden;}
 
 /* ── Sidebar ── */
 [data-testid="stSidebar"] {
-    background: #FFFFFF !important;
-    border-right: 1px solid #EDE9FE !important;
-    min-width: 240px !important;
-    max-width: 240px !important;
-    box-shadow: 2px 0 16px rgba(109,40,217,0.06);
+    background: #FDFBFF !important;
+    border-right: 1.5px solid #EDE9FE !important;
+    min-width: 252px !important;
+    max-width: 252px !important;
+    box-shadow: 4px 0 24px rgba(124,58,237,0.08);
 }
 [data-testid="stSidebar"] > div:first-child { padding: 0 !important; }
 [data-testid="stSidebar"] .stRadio > div { gap: 0 !important; }
 [data-testid="stSidebar"] .stRadio label {
     display: flex !important;
     align-items: center !important;
-    padding: 10px 16px !important;
+    padding: 9px 14px !important;
     border-radius: 12px !important;
     cursor: pointer !important;
     font-size: 13px !important;
-    font-weight: 500 !important;
-    color: #7C3AED !important;
-    transition: all 0.18s !important;
+    font-weight: 600 !important;
+    color: #6D28D9 !important;
+    transition: all 0.18s ease !important;
     margin-bottom: 2px !important;
     white-space: nowrap !important;
+    border: 1.5px solid transparent !important;
 }
 [data-testid="stSidebar"] .stRadio label:hover {
-    background: #F5F3FF !important;
-    color: #5B21B6 !important;
+    background: #F0EBFF !important;
+    color: #4C1D95 !important;
+    border-color: #DDD6FE !important;
+    transform: translateX(2px) !important;
 }
 [data-testid="stSidebar"] input[type="radio"] { display: none !important; }
 [data-testid="stSidebar"] .stRadio > label { display: none !important; }
-[data-testid="stSidebar"] .element-container { margin: 0 !important; padding: 0 6px !important; }
+[data-testid="stSidebar"] .element-container { margin: 0 !important; padding: 0 10px !important; }
 
 /* ── Main content ── */
 .main .block-container {
@@ -494,20 +496,27 @@ def calc_prediction(dep, mun, delito, sexo, etario, año):
 # ─── SIDEBAR ──────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
-    <div style="padding:24px 20px 18px;border-bottom:1px solid #EDE9FE;">
+    <div style="padding:22px 18px 18px;background:#F5F0FF;border-bottom:1.5px solid #EDE9FE;">
         <div style="display:flex;align-items:center;gap:12px;">
-            <div style="width:42px;height:42px;background:linear-gradient(135deg,#2E1065,#7C3AED);
-                border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:20px;
-                box-shadow:0 4px 12px rgba(124,58,237,0.35);">🛡️</div>
+            <div style="width:44px;height:44px;background:#7C3AED;
+                border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:21px;
+                box-shadow:0 4px 14px rgba(124,58,237,0.3);">🛡️</div>
             <div>
-                <div style="font-weight:900;font-size:18px;color:#1E1B4B;letter-spacing:-0.5px;">SafeHer</div>
-                <div style="font-size:9px;color:#A78BFA;text-transform:uppercase;letter-spacing:1.4px;font-weight:600;">Colombia · IA Protección</div>
+                <div style="font-weight:900;font-size:18px;color:#2E1065;letter-spacing:-0.4px;">SafeHer</div>
+                <div style="font-size:9px;color:#A78BFA;text-transform:uppercase;letter-spacing:1.5px;font-weight:700;margin-top:2px;">Colombia · IA Protección</div>
             </div>
+        </div>
+        <div style="display:inline-flex;align-items:center;gap:5px;background:#EDE9FE;border-radius:20px;padding:4px 10px;margin-top:11px;">
+            <div style="width:6px;height:6px;border-radius:50%;background:#10B981;"></div>
+            <span style="font-size:10px;color:#6D28D9;font-weight:700;">Sistema activo · 2025</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown("<div style='padding:10px 8px 0;'>", unsafe_allow_html=True)
+    st.markdown("""<div style='padding:12px 10px 6px;'>
+        <div style='font-size:9px;color:#C4B5FD;font-weight:800;letter-spacing:2px;
+            text-transform:uppercase;padding:0 8px;margin-bottom:6px;'>Navegación</div>
+    """, unsafe_allow_html=True)
     nav_options = [
         "🏠  Inicio",
         "📊  Predicción ML",
@@ -527,19 +536,26 @@ with st.sidebar:
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("""
-    <div style="padding:16px 14px;border-top:1px solid #EDE9FE;margin-top:auto;">
-        <div style="background:linear-gradient(135deg,#FFF1F2,#FEE2E2);border:1px solid #FECDD3;
-            border-radius:18px;padding:16px;text-align:center;">
-            <div style="font-size:10px;color:#9F1239;font-weight:800;letter-spacing:1.2px;
+    <div style="padding:10px 12px 16px;border-top:1.5px solid #EDE9FE;margin-top:auto;">
+        <div style="background:#FFF5F5;border:1.5px solid #FECACA;
+            border-radius:16px;padding:14px;text-align:center;">
+            <div style="font-size:9px;color:#DC2626;font-weight:800;letter-spacing:1.5px;
                 text-transform:uppercase;margin-bottom:8px;">🚨 Emergencias</div>
-            <a href="tel:123" style="display:block;font-size:30px;font-weight:900;color:#DC2626;
-                text-decoration:none;font-family:Georgia,serif;line-height:1;letter-spacing:-1px;">123</a>
-            <div style="font-size:9px;color:#BE123C;margin-bottom:10px;font-weight:600;">Policía Nacional</div>
-            <a href="tel:155" style="display:block;font-size:30px;font-weight:900;color:#7C3AED;
-                text-decoration:none;font-family:Georgia,serif;line-height:1;letter-spacing:-1px;">155</a>
-            <div style="font-size:9px;color:#6D28D9;font-weight:600;">Línea Mujer 24/7</div>
+            <div style="display:flex;justify-content:center;gap:20px;align-items:stretch;">
+                <div style="text-align:center;">
+                    <a href="tel:123" style="display:block;font-size:28px;font-weight:900;color:#DC2626;
+                        text-decoration:none;font-family:Georgia,serif;line-height:1;letter-spacing:-1px;">123</a>
+                    <div style="font-size:9px;color:#EF4444;font-weight:600;margin-top:2px;">Policía Nacional</div>
+                </div>
+                <div style="width:1px;background:#FECACA;"></div>
+                <div style="text-align:center;">
+                    <a href="tel:155" style="display:block;font-size:28px;font-weight:900;color:#7C3AED;
+                        text-decoration:none;font-family:Georgia,serif;line-height:1;letter-spacing:-1px;">155</a>
+                    <div style="font-size:9px;color:#8B5CF6;font-weight:600;margin-top:2px;">Línea Mujer 24/7</div>
+                </div>
+            </div>
         </div>
-        <div style="text-align:center;margin-top:10px;font-size:9px;color:#A78BFA;font-weight:500;">
+        <div style="text-align:center;margin-top:8px;font-size:9px;color:#C4B5FD;font-weight:500;">
             Prototipo académico v4.0 · Datos: Policía Nacional
         </div>
     </div>
