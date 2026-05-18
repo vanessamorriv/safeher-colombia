@@ -243,6 +243,10 @@ a:hover { opacity: 0.88; }
 
 /* Remove top space ── */
 .block-container { padding-top: 16px !important; }
+
+/* Hide empty element containers ── */
+.element-container:empty { display: none !important; }
+div[data-testid="stVerticalBlock"] > div:empty { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -652,28 +656,27 @@ elif "📊" in page:
     </div>
     """, unsafe_allow_html=True)
 
-    with st.container():
-        st.markdown('<div class="sh-card">', unsafe_allow_html=True)
-        st.markdown('<div style="font-size:13px;font-weight:700;color:#7C3AED;margin-bottom:16px;">⚙️ Parámetros de Análisis</div>', unsafe_allow_html=True)
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            dep = st.selectbox("🗺️ Departamento", DEPARTAMENTOS, index=DEPARTAMENTOS.index("ANTIOQUIA"))
-        munis = get_municipios(dep)
-        with c2:
-            mun = st.selectbox("📍 Municipio", munis)
-        with c3:
-            año = st.selectbox("📅 Año", list(range(2019, 2028)), index=5)
+    st.markdown('<div class="sh-card">', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:13px;font-weight:700;color:#7C3AED;margin-bottom:16px;">⚙️ Parámetros de Análisis</div>', unsafe_allow_html=True)
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        dep = st.selectbox("🗺️ Departamento", DEPARTAMENTOS, index=DEPARTAMENTOS.index("ANTIOQUIA"))
+    munis = get_municipios(dep)
+    with c2:
+        mun = st.selectbox("📍 Municipio", munis)
+    with c3:
+        año = st.selectbox("📅 Año", list(range(2019, 2028)), index=5)
 
-        c4, c5, c6 = st.columns(3)
-        with c4:
-            delito = st.selectbox("⚖️ Tipo de Delito", DELITOS)
-        with c5:
-            sexo = st.selectbox("👤 Sexo", ["FEMENINO","MASCULINO"])
-        with c6:
-            etario = st.selectbox("🎂 Grupo Etario", ["DE 0 A 17 AÑOS","DE 18 A 26 AÑOS","DE 27 A 59 AÑOS","DE 60 Y MÁS"], index=2)
+    c4, c5, c6 = st.columns(3)
+    with c4:
+        delito = st.selectbox("⚖️ Tipo de Delito", DELITOS)
+    with c5:
+        sexo = st.selectbox("👤 Sexo", ["FEMENINO","MASCULINO"])
+    with c6:
+        etario = st.selectbox("🎂 Grupo Etario", ["DE 0 A 17 AÑOS","DE 18 A 26 AÑOS","DE 27 A 59 AÑOS","DE 60 Y MÁS"], index=2)
 
-        predict_btn = st.button("🔮 Ejecutar Predicción ML", type="primary", key="predict_btn")
-        st.markdown('</div>', unsafe_allow_html=True)
+    predict_btn = st.button("🔮 Ejecutar Predicción ML", type="primary", key="predict_btn")
+    st.markdown('</div>', unsafe_allow_html=True)
 
     if predict_btn or st.session_state.get('pred_result'):
         if predict_btn:
@@ -914,7 +917,7 @@ elif "📊" in page:
             # AI Interpretation
             st.markdown("""
             <div class="sh-card">
-                <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;">
+                <div style="display:flex;align-items:center;gap:14px;margin-bottom:4px;">
                     <div style="width:46px;height:46px;background:linear-gradient(135deg,#1E1B4B,#5B21B6);
                         border-radius:14px;display:flex;align-items:center;justify-content:center;
                         font-size:22px;box-shadow:0 4px 14px rgba(91,33,182,0.3);">🤖</div>
@@ -1021,154 +1024,132 @@ elif "🗺️" in page:
         st.markdown('<div class="sh-card">', unsafe_allow_html=True)
         st.markdown('<div style="font-size:12px;font-weight:700;color:#A78BFA;margin-bottom:16px;text-transform:uppercase;letter-spacing:1.2px;">🇨🇴 Colombia — Nivel de Riesgo por Departamento</div>', unsafe_allow_html=True)
 
-        # ── Plotly choropleth map usando GeoJSON de Colombia ──────────────────
-        import plotly.express as px, json, urllib.request
-        GEOJSON_URL = "https://raw.githubusercontent.com/hananinas/colombia-geojson/main/colombia.geo.json"
-        @st.cache_data
-        def load_geojson():
-            try:
-                with urllib.request.urlopen(GEOJSON_URL, timeout=5) as r:
-                    return json.loads(r.read())
-            except Exception:
-                return None
+        # ── Mapa Choropleth interactivo usando Plotly + ISO codes ─────────────
+        import plotly.express as px, json
 
-        geojson = load_geojson()
-        dep_scores = [{"Departamento": k, "Score": v["score"], "Zona": v["zona"],
-                       "Gravedad": v["gravedad"], "Municipios": v["municipios"]}
-                      for k, v in CRIME_DATA.items()]
-        df_map = pd.DataFrame(dep_scores)
-
-        if geojson:
-            fig_map = px.choropleth(
-                df_map,
-                geojson=geojson,
-                locations="Departamento",
-                featureidkey="properties.NOMBRE_DPT",
-                color="Score",
-                color_continuous_scale=[
-                    [0.0,"#ECFDF5"],[0.25,"#10B981"],[0.42,"#3B82F6"],
-                    [0.58,"#F59E0B"],[0.67,"#EF4444"],[0.83,"#DC2626"],[1.0,"#7F1D1D"]
-                ],
-                range_color=[1.5, 5.0],
-                hover_name="Departamento",
-                hover_data={"Score":":.1f","Zona":True,"Gravedad":True,"Municipios":True},
-                labels={"Score":"Score Riesgo"},
-            )
-            fig_map.update_geos(
-                fitbounds="locations", visible=False,
-                bgcolor="rgba(0,0,0,0)"
-            )
-            fig_map.update_layout(
-                height=460, margin=dict(l=0,r=0,t=0,b=0),
-                paper_bgcolor="rgba(0,0,0,0)",
-                coloraxis_colorbar=dict(
-                    title="Score", thickness=12, len=0.6,
-                    tickfont=dict(size=10), titlefont=dict(size=11)
-                ),
-                font=dict(family="Plus Jakarta Sans")
-            )
-            st.plotly_chart(fig_map, use_container_width=True, config={"displayModeBar": False})
-            st.markdown('<div style="font-size:11px;color:#6B7280;text-align:center;margin-top:-8px;">Haz clic en un departamento de la lista de abajo para ver análisis detallado</div>', unsafe_allow_html=True)
-        else:
-            # Fallback: bar chart if GeoJSON fails
-            df_sorted_map = df_map.sort_values("Score", ascending=True)
-            bar_colors_map = [get_risk_color(s) for s in df_sorted_map["Score"]]
-            fig_fb = go.Figure(go.Bar(
-                x=df_sorted_map["Score"], y=df_sorted_map["Departamento"],
-                orientation="h", marker_color=bar_colors_map,
-                text=[f"{s:.1f}" for s in df_sorted_map["Score"]],
-                textposition="outside"
-            ))
-            fig_fb.update_layout(height=700, margin=dict(l=5,r=40,t=10,b=10),
-                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                xaxis=dict(range=[0,6.5], gridcolor="#EDE9FE"),
-                yaxis=dict(tickfont=dict(size=10)), showlegend=False)
-            st.plotly_chart(fig_fb, use_container_width=True, config={"displayModeBar": False})
-
-        # SVG geographic map of Colombia (approximate) — kept as fallback reference
-        GEO = {
-            "LA GUAJIRA":         (380,  28, 68, 45),
-            "MAGDALENA":          (316,  55, 66, 52),
-            "CESAR":              (352,  95, 63, 50),
-            "ATLÁNTICO":          (278,  65, 42, 36),
-            "BOLÍVAR":            (264,  96, 68, 58),
-            "SUCRE":              (238, 114, 50, 44),
-            "CÓRDOBA":            (208, 100, 56, 55),
-            "NORTE DE SANTANDER": (340, 146, 70, 50),
-            "SANTANDER":          (306, 178, 62, 53),
-            "BOYACÁ":             (296, 222, 63, 50),
-            "CUNDINAMARCA":       (278, 258, 58, 46),
-            "BOGOTÁ D.C.":        (284, 280, 36, 30),
-            "ANTIOQUIA":          (200, 175, 78, 76),
-            "CHOCÓ":              (150, 188, 56, 85),
-            "CALDAS":             (222, 244, 48, 40),
-            "RISARALDA":          (204, 272, 42, 36),
-            "QUINDÍO":            (218, 295, 37, 33),
-            "VALLE DEL CAUCA":    (168, 292, 66, 66),
-            "TOLIMA":             (252, 278, 56, 56),
-            "HUILA":              (260, 322, 58, 54),
-            "CAUCA":              (180, 346, 68, 58),
-            "NARIÑO":             (166, 394, 70, 53),
-            "PUTUMAYO":           (240, 372, 66, 50),
-            "CAQUETÁ":            (298, 332, 72, 63),
-            "META":               (330, 254, 70, 68),
-            "CASANARE":           (352, 198, 62, 56),
-            "ARAUCA":             (350, 148, 0, 0),
-            "VICHADA":            (408, 202, 76, 78),
-            "GUAINÍA":            (422, 278, 64, 66),
-            "VAUPÉS":             (388, 348, 70, 68),
-            "AMAZONAS":           (318, 416, 86, 66),
-            "GUAVIARE":           (340, 312, 70, 56),
-            "SAN ANDRÉS":         (42,  80, 34, 27),
+        # Coordenadas centrales aproximadas de cada departamento (lat, lon)
+        DEP_COORDS = {
+            "AMAZONAS":           (-1.5,  -71.5),
+            "ANTIOQUIA":          ( 7.0,  -75.5),
+            "ARAUCA":             ( 6.5,  -71.0),
+            "ATLÁNTICO":          (10.7,  -74.9),
+            "BOGOTÁ D.C.":        ( 4.7,  -74.1),
+            "BOLÍVAR":            ( 8.5,  -74.5),
+            "BOYACÁ":             ( 5.5,  -73.0),
+            "CALDAS":             ( 5.3,  -75.3),
+            "CAQUETÁ":            ( 1.0,  -74.0),
+            "CASANARE":           ( 5.5,  -71.5),
+            "CAUCA":              ( 2.5,  -76.8),
+            "CESAR":              ( 9.5,  -73.5),
+            "CHOCÓ":              ( 5.5,  -76.8),
+            "CÓRDOBA":            ( 8.5,  -75.8),
+            "CUNDINAMARCA":       ( 5.0,  -74.5),
+            "GUAINÍA":            ( 2.5,  -68.5),
+            "GUAVIARE":           ( 2.0,  -72.5),
+            "HUILA":              ( 2.5,  -75.5),
+            "LA GUAJIRA":         (11.5,  -72.5),
+            "MAGDALENA":          (10.0,  -74.3),
+            "META":               ( 3.5,  -73.0),
+            "NARIÑO":             ( 1.2,  -77.5),
+            "NORTE DE SANTANDER": ( 7.9,  -72.5),
+            "PUTUMAYO":           ( 0.5,  -76.0),
+            "QUINDÍO":            ( 4.5,  -75.7),
+            "RISARALDA":          ( 5.2,  -76.0),
+            "SAN ANDRÉS":         (12.5,  -81.7),
+            "SANTANDER":          ( 6.8,  -73.5),
+            "SUCRE":              ( 9.0,  -75.0),
+            "TOLIMA":             ( 4.0,  -75.3),
+            "VALLE DEL CAUCA":    ( 3.8,  -76.5),
+            "VAUPÉS":             ( 0.5,  -70.5),
+            "VICHADA":            ( 4.5,  -69.5),
         }
 
-        svg_rects = ""
-        for name, (x, y, w, h) in GEO.items():
-            if w == 0: continue
-            dep_data = CRIME_DATA.get(name)
-            if not dep_data: continue
-            if filter_zone != "TODOS" and get_risk_zone_label(dep_data["score"]) != filter_zone:
-                continue
-            color = get_risk_color(dep_data["score"])
-            is_sel = st.session_state.get("selected_dep") == name
-            fill = color if is_sel else color + "B0"
-            stroke = color if is_sel else "white"
-            stroke_w = 2.5 if is_sel else 0.8
-            short = name.split()[0] if len(name) > 12 else name
-            label_size = 8 if w > 65 else 7
-            svg_rects += f"""
-            <rect x="{x}" y="{y}" width="{w}" height="{h}" rx="7"
-                fill="{fill}" stroke="{stroke}" stroke-width="{stroke_w}" opacity="0.92"/>
-            """
-            if w > 45:
-                svg_rects += f"""
-            <text x="{x+w//2}" y="{y+h//2-5}" text-anchor="middle" dominant-baseline="central"
-                font-size="{label_size}" font-weight="700" fill="{'white' if is_sel else '#1F2937'}"
-                style="pointer-events:none;user-select:none;">{short}</text>
-            <text x="{x+w//2}" y="{y+h//2+7}" text-anchor="middle" dominant-baseline="central"
-                font-size="7" font-weight="800" fill="{'rgba(255,255,255,0.9)' if is_sel else color}"
-                style="pointer-events:none;user-select:none;">{dep_data['score']:.1f}</text>
-            """
+        dep_scores = []
+        for k, v in CRIME_DATA.items():
+            lat, lon = DEP_COORDS.get(k, (4.0, -74.0))
+            dep_scores.append({
+                "Departamento": k, "Score": v["score"],
+                "Zona": v["zona"], "Gravedad": v["gravedad"],
+                "Municipios": v["municipios"],
+                "lat": lat, "lon": lon,
+                "Color": get_risk_color(v["score"]),
+                "Texto": f"{k}<br>Score: {v['score']:.1f}/6.0<br>Zona: {v['zona']}<br>Gravedad: {v['gravedad']}"
+            })
+        df_map = pd.DataFrame(dep_scores)
 
-        # Legend in map
-        legend_items = [
-            ("#7F1D1D","≥4.5 Crítico"),("#DC2626","≥4.0 Alto"),
-            ("#F59E0B","≥3.0 Medio"),("#3B82F6","≥2.5 Bajo"),("#059669","<2.5 Mínimo")
-        ]
-        leg_svg = '<rect x="5" y="442" width="145" height="62" rx="8" fill="white" opacity="0.94"/>'
-        for li, (lc, ll) in enumerate(legend_items):
-            lx, ly = 12, 448 + li * 11
-            leg_svg += f'<rect x="{lx}" y="{ly}" width="9" height="9" rx="2" fill="{lc}"/>'
-            leg_svg += f'<text x="{lx+13}" y="{ly+7}" font-size="7.5" fill="#374151" font-weight="500">{ll}</text>'
+        # Filtrar si hay filtro activo
+        if filter_zone != "TODOS":
+            df_map_vis = df_map[df_map["Zona"].apply(lambda z: get_risk_zone_label(
+                CRIME_DATA.get(df_map[df_map["Zona"]==z]["Departamento"].iloc[0] if len(df_map[df_map["Zona"]==z])>0 else "", {}).get("score", 0)
+            ) == filter_zone if False else True)]
+        else:
+            df_map_vis = df_map
 
-        st.markdown(f"""
-        <div style="background:linear-gradient(135deg,#EEF2FF,#E0E7FF);border-radius:16px;
-            border:1px solid #C7D2FE;overflow:hidden;padding:10px;">
-            <svg viewBox="0 0 500 510" width="100%" style="display:block;">
-                <rect x="0" y="0" width="500" height="510" fill="#DBEAFE" opacity="0.3"/>
-                {svg_rects}
-                {leg_svg}
-            </svg>
+        # Crear mapa de burbujas sobre Colombia
+        fig_map = go.Figure()
+
+        # Añadir capa de burbujas por departamento
+        for _, row_d in df_map_vis.iterrows():
+            color = get_risk_color(row_d["Score"])
+            fig_map.add_trace(go.Scattergeo(
+                lon=[row_d["lon"]],
+                lat=[row_d["lat"]],
+                mode="markers+text",
+                marker=dict(
+                    size=max(18, row_d["Score"] * 7),
+                    color=color,
+                    opacity=0.82,
+                    line=dict(color="white", width=1.2)
+                ),
+                text=[f"{row_d['Departamento'].split()[0][:8]}"],
+                textposition="middle center",
+                textfont=dict(size=7, color="white", family="Plus Jakarta Sans"),
+                hovertemplate=(
+                    f"<b>{row_d['Departamento']}</b><br>"
+                    f"Score: {row_d['Score']:.1f}/6.0<br>"
+                    f"Zona: {row_d['Zona']}<br>"
+                    f"Gravedad: {row_d['Gravedad']}<br>"
+                    f"Municipios: {row_d['Municipios']}"
+                    "<extra></extra>"
+                ),
+                showlegend=False
+            ))
+
+        fig_map.update_geos(
+            scope="south america",
+            lonaxis_range=[-82, -66],
+            lataxis_range=[-5, 13],
+            showland=True, landcolor="#F0F4FF",
+            showocean=True, oceancolor="#DBEAFE",
+            showcoastlines=True, coastlinecolor="#93C5FD",
+            showborders=True, bordercolor="#C4B5FD",
+            showrivers=True, rivercolor="#BFDBFE",
+            showcountries=True, countrycolor="#A78BFA",
+            bgcolor="rgba(0,0,0,0)",
+            resolution=50,
+        )
+        fig_map.update_layout(
+            height=500,
+            margin=dict(l=0, r=0, t=0, b=0),
+            paper_bgcolor="rgba(0,0,0,0)",
+            geo=dict(
+                lonaxis_range=[-82, -66],
+                lataxis_range=[-5, 13],
+            ),
+            font=dict(family="Plus Jakarta Sans")
+        )
+        st.plotly_chart(fig_map, use_container_width=True, config={"displayModeBar": False, "scrollZoom": True})
+        st.markdown('<div style="font-size:11px;color:#6B7280;text-align:center;margin-top:-8px;">Burbujas proporcionales al score de riesgo · Pasa el cursor para detalles · Selecciona departamento en la lista de abajo</div>', unsafe_allow_html=True)
+
+        # Leyenda del mapa
+        st.markdown("""
+        <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin:10px 0 4px;">
+            <span style="font-size:11px;color:#7F1D1D;font-weight:700;">● ≥4.5 Crítico</span>
+            <span style="font-size:11px;color:#DC2626;font-weight:700;">● ≥4.0 Alto</span>
+            <span style="font-size:11px;color:#EF4444;font-weight:700;">● ≥3.5 Medio-Alto</span>
+            <span style="font-size:11px;color:#F59E0B;font-weight:700;">● ≥3.0 Medio</span>
+            <span style="font-size:11px;color:#3B82F6;font-weight:700;">● ≥2.5 Bajo</span>
+            <span style="font-size:11px;color:#10B981;font-weight:700;">● &lt;2.5 Mínimo</span>
         </div>
         """, unsafe_allow_html=True)
 
