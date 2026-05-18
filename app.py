@@ -316,24 +316,30 @@ def card(content, extra=""):
     return (f'<div style="background:#fff;border-radius:20px;border:1px solid #EDE9FE;'
             f'box-shadow:0 2px 20px rgba(109,40,217,0.07);padding:22px;margin-bottom:16px;{extra}">{content}</div>')
 
+def get_api_key():
+    """Obtiene la API key desde secrets de Streamlit o variable de entorno."""
+    # 1. Streamlit secrets (Streamlit Cloud)
+    try:
+        key = st.secrets["ANTHROPIC_API_KEY"]
+        if key and key.strip():
+            return key.strip()
+    except Exception:
+        pass
+    # 2. Variable de entorno (local)
+    key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if key:
+        return key
+    return None
+
 def call_claude(system_prompt, user_msg, history=None):
     """Call Claude API — reads ANTHROPIC_API_KEY from st.secrets or env."""
     try:
-        api_key = None
-        # 1. Try Streamlit secrets (recommended for deployment)
-        try:
-            api_key = st.secrets["ANTHROPIC_API_KEY"]
-        except Exception:
-            pass
-        # 2. Fall back to environment variable
-        if not api_key:
-            api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        api_key = get_api_key()
 
         if not api_key:
             return ("⚠️ **API Key no configurada.**\n\n"
-                    "Para activar la IA, crea el archivo `.streamlit/secrets.toml` con:\n"
-                    "```\nANTHROPIC_API_KEY = \"sk-ant-...\"\n```\n"
-                    "O define la variable de entorno `ANTHROPIC_API_KEY` antes de ejecutar la app.")
+                    "Ve a Streamlit Cloud → tu app → Settings → Secrets y agrega:\n"
+                    "ANTHROPIC_API_KEY = \"sk-ant-tu-clave\"")
 
         client = anthropic.Anthropic(api_key=api_key)
         if history:
@@ -349,8 +355,8 @@ def call_claude(system_prompt, user_msg, history=None):
         )
         return response.content[0].text
     except anthropic.AuthenticationError:
-        return ("⚠️ **API Key inválida.** Verifica que `ANTHROPIC_API_KEY` sea correcta en "
-                "`.streamlit/secrets.toml` o como variable de entorno.")
+        return ("⚠️ **API Key inválida.** Verifica que la clave sea correcta en "
+                "Streamlit Cloud → Settings → Secrets.")
     except Exception as e:
         return f"⚠️ Error de conexión: {str(e)}"
 
@@ -1913,16 +1919,25 @@ elif "ℹ️" in page:
             </div>""", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # API Key info box
-        st.markdown("""<div style="background:linear-gradient(135deg,#F5F3FF,#EDE9FE);border:1.5px solid #C4B5FD;
-            border-radius:18px;padding:18px;">
-            <div style="font-weight:800;color:#5B21B6;font-size:13px;margin-bottom:10px;">🔑 Configuración de IA</div>
-            <div style="font-size:12px;color:#1E1B4B;line-height:1.8;">
-                Para activar todas las funciones de IA (SARA, interpretaciones, consejos), crea el archivo:
-            </div>
-            <div style="background:#1E1B4B;border-radius:10px;padding:12px;margin:10px 0;font-family:monospace;font-size:11px;color:#A7F3D0;">
-                .streamlit/secrets.toml<br>
-                ANTHROPIC_API_KEY = "sk-ant-..."
-            </div>
-            <div style="font-size:11px;color:#7C3AED;font-weight:600;">O define la variable de entorno ANTHROPIC_API_KEY</div>
-        </div>""", unsafe_allow_html=True)
+        # API Key status box
+        key_ok = get_api_key() is not None
+        if key_ok:
+            st.markdown("""<div style="background:linear-gradient(135deg,#ECFDF5,#D1FAE5);border:1.5px solid #6EE7B7;
+                border-radius:18px;padding:18px;">
+                <div style="font-weight:800;color:#065F46;font-size:13px;margin-bottom:8px;">✅ IA Configurada correctamente</div>
+                <div style="font-size:12px;color:#047857;line-height:1.8;">
+                    La API key de Anthropic está activa. Todas las funciones de IA (SARA, interpretaciones, consejos) están disponibles.
+                </div>
+            </div>""", unsafe_allow_html=True)
+        else:
+            st.markdown("""<div style="background:linear-gradient(135deg,#F5F3FF,#EDE9FE);border:1.5px solid #C4B5FD;
+                border-radius:18px;padding:18px;">
+                <div style="font-weight:800;color:#5B21B6;font-size:13px;margin-bottom:10px;">🔑 Configuración de IA</div>
+                <div style="font-size:12px;color:#1E1B4B;line-height:1.8;">
+                    Ve a tu app en Streamlit Cloud → <strong>Settings → Secrets</strong> y agrega:
+                </div>
+                <div style="background:#1E1B4B;border-radius:10px;padding:12px;margin:10px 0;font-family:monospace;font-size:11px;color:#A7F3D0;">
+                    ANTHROPIC_API_KEY = "sk-ant-..."
+                </div>
+                <div style="font-size:11px;color:#7C3AED;font-weight:600;">O define la variable de entorno ANTHROPIC_API_KEY</div>
+            </div>""", unsafe_allow_html=True)
