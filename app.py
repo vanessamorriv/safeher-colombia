@@ -2,7 +2,37 @@ import streamlit as st
 import random
 import math
 import os
+import pickle
+import numpy as np
+import pandas as pd
 from groq import Groq
+import plotly.graph_objects as go
+
+# ─── CARGAR MODELOS PKL ───────────────────────────────────────────────────────
+@st.cache_resource
+def load_models():
+    models = {}
+    files = {
+        "xgb_zona":           "xgb_zona.pkl",
+        "lgbm_zona":          "lgbm_zona.pkl",
+        "le_zona":            "le_target_zona.pkl",
+        "encoders_zona":      "encoders_zona.pkl",
+        "xgb_gravedad":       "xgb_gravedad.pkl",
+        "pipe_lgbm_gravedad": "pipe_lgbm_gravedad.pkl",
+        "le_gravedad":        "le_target_gravedad.pkl",
+        "preprocessor_grav":  "preprocessor_gravedad.pkl",
+        "scaler_gravedad":    "scaler_gravedad.pkl",
+    }
+    for key, fname in files.items():
+        try:
+            with open(fname, "rb") as f:
+                models[key] = pickle.load(f)
+        except Exception:
+            models[key] = None
+    return models
+
+MODELS = load_models()
+MODELS_OK = any(v is not None for v in MODELS.values())
 
 # ─── PAGE CONFIG ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -370,6 +400,59 @@ def calc_prediction(dep, mun, delito, sexo, etario, año):
     zona = zonas[zona_idx]
     gravedad = gravedades[grav_idx]
     victimas = round(adjusted * 18 + random.random() * 10)
+    used_pkl = False
+
+    # ── Intentar usar modelos PKL reales ──────────────────────────────────────
+    try:
+        if MODELS.get("xgb_zona") and MODELS.get("encoders_zona") and MODELS.get("le_zona"):
+            enc = MODELS["encoders_zona"]
+            # Construir DataFrame de entrada
+            row = pd.DataFrame([{
+                "DEPARTAMENTO": dep,
+                "MUNICIPIO":    mun,
+                "DELITO":       delito,
+                "SEXO":         sexo,
+                "GRUPO_ETARIO": etario,
+                "AÑO":          año,
+            }])
+            # Aplicar label encoders si existen
+            for col in ["DEPARTAMENTO","MUNICIPIO","DELITO","SEXO","GRUPO_ETARIO"]:
+                if col in enc and col in row.columns:
+                    try:
+                        row[col] = enc[col].transform(row[col].astype(str))
+                    except Exception:
+                        row[col] = 0
+            zona_pred = MODELS["xgb_zona"].predict(row)[0]
+            try:
+                zona = MODELS["le_zona"].inverse_transform([zona_pred])[0]
+            except Exception:
+                zona = str(zona_pred)
+            used_pkl = True
+    except Exception:
+        pass
+
+    try:
+        if MODELS.get("xgb_gravedad") and MODELS.get("le_gravedad"):
+            row2 = pd.DataFrame([{
+                "DEPARTAMENTO": dep,
+                "MUNICIPIO":    mun,
+                "DELITO":       delito,
+                "SEXO":         sexo,
+                "GRUPO_ETARIO": etario,
+                "AÑO":          año,
+            }])
+            if MODELS.get("preprocessor_grav"):
+                row2 = MODELS["preprocessor_grav"].transform(row2)
+            elif MODELS.get("scaler_gravedad"):
+                row2 = MODELS["scaler_gravedad"].transform(row2)
+            grav_pred = MODELS["xgb_gravedad"].predict(row2)[0]
+            try:
+                gravedad = MODELS["le_gravedad"].inverse_transform([grav_pred])[0]
+            except Exception:
+                gravedad = str(grav_pred)
+            used_pkl = True
+    except Exception:
+        pass
 
     probs_zona = {}
     for i, z in enumerate(zonas):
@@ -401,7 +484,7 @@ def calc_prediction(dep, mun, delito, sexo, etario, año):
 
     return {"zona": zona, "gravedad": gravedad, "victimas": victimas, "probs_zona": probs_zona,
             "trend": trend, "comparativa": comparativa, "score": round(adjusted, 1),
-            "zona_idx": zona_idx, "monthly": monthly}
+            "zona_idx": zona_idx, "monthly": monthly, "used_pkl": used_pkl}
 
 # ─── SIDEBAR ──────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -420,7 +503,7 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
     st.markdown("<div style='padding:10px 8px 0;'>", unsafe_allow_html=True)
-    page = st.radio("nav", options=[
+    nav_options = [
         "🏠  Inicio",
         "📊  Predicción ML",
         "🗺️  Mapa de Riesgo",
@@ -430,7 +513,12 @@ with st.sidebar:
         "💜  SARA · IA Apoyo",
         "🚔  Ayuda Cercana",
         "ℹ️  Acerca de",
-    ], label_visibility="collapsed")
+    ]
+    # Allow navigation from module cards
+    default_nav = nav_options.index(st.session_state.get("nav_page", "🏠  Inicio")) if st.session_state.get("nav_page") in nav_options else 0
+    if "nav_page" in st.session_state:
+        del st.session_state["nav_page"]
+    page = st.radio("nav", options=nav_options, index=default_nav, label_visibility="collapsed")
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("""
@@ -519,17 +607,29 @@ if "🏠" in page:
         ("🚔","Ayuda Cercana","Policía, hospitales, refugios con direcciones","#0891B2"),
         ("ℹ️","Acerca de","Equipo, tecnología y misión del proyecto","#6B7280"),
     ]
+    page_map = {
+        "Predicción ML": "📊  Predicción ML",
+        "Mapa de Riesgo": "🗺️  Mapa de Riesgo",
+        "Viaje Seguro": "✈️  Viaje Seguro",
+        "Emergencias": "🚨  Emergencias",
+        "Denuncias": "📋  Denuncias",
+        "IA de Apoyo SARA": "💜  SARA · IA Apoyo",
+        "Ayuda Cercana": "🚔  Ayuda Cercana",
+        "Acerca de": "ℹ️  Acerca de",
+    }
     cols = st.columns(4)
     for i, (icon, title, desc, color) in enumerate(modules):
         with cols[i % 4]:
-            st.markdown(f"""<div style="background:#fff;border-radius:20px;padding:22px;border:1px solid #EDE9FE;
-                margin-bottom:14px;cursor:pointer;transition:all 0.2s;
-                box-shadow:0 2px 12px rgba(109,40,217,0.06);">
+            st.markdown(f'''<div style="background:#fff;border-radius:20px;padding:22px;border:1px solid #EDE9FE;
+                margin-bottom:4px;box-shadow:0 2px 12px rgba(109,40,217,0.06);">
                 <div style="width:46px;height:46px;border-radius:14px;background:{color}15;
                     display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:14px;">{icon}</div>
                 <div style="font-weight:800;font-size:14px;color:#1E1B4B;margin-bottom:6px;">{title}</div>
-                <div style="font-size:12px;color:#6B7280;line-height:1.6;">{desc}</div>
-            </div>""", unsafe_allow_html=True)
+                <div style="font-size:12px;color:#6B7280;line-height:1.6;margin-bottom:10px;">{desc}</div>
+            </div>''', unsafe_allow_html=True)
+            if st.button(f"Ir a {title}", key=f"mod_{i}", use_container_width=True):
+                st.session_state["nav_page"] = page_map.get(title, page)
+                st.rerun()
 
     st.markdown("""<div style="background:linear-gradient(135deg,#FFFBEB,#FEF3C7);border:1px solid #FCD34D;
         border-radius:16px;padding:16px 22px;display:flex;align-items:center;gap:14px;margin-top:8px;">
@@ -575,7 +675,7 @@ elif "📊" in page:
         predict_btn = st.button("🔮 Ejecutar Predicción ML", type="primary", key="predict_btn")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    if predict_btn or st.session_state.get("pred_result"):
+    if predict_btn or st.session_state.get('pred_result'):
         if predict_btn:
             with st.spinner("⏳ Ejecutando modelos ML..."):
                 result = calc_prediction(dep, mun, delito, sexo, etario, año)
@@ -630,10 +730,19 @@ elif "📊" in page:
                         <div style="font-size:10px;color:#6B7280;margin-top:4px;">{extra}</div>
                     </div>""", unsafe_allow_html=True)
 
+            # PKL status badge
+            pkl_badge = ('✅ Modelos PKL reales activos' if result.get("used_pkl")
+                         else '⚙️ Modo simulación (PKL no cargados)')
+            pkl_color = "#059669" if result.get("used_pkl") else "#D97706"
+            pkl_bg = "#ECFDF5" if result.get("used_pkl") else "#FFFBEB"
+            st.markdown(f'''<div style="background:{pkl_bg};border:1px solid {pkl_color}40;border-radius:12px;
+                padding:10px 16px;margin:12px 0;display:inline-block;font-size:12px;font-weight:700;color:{pkl_color};">
+                {pkl_badge}</div>''', unsafe_allow_html=True)
+
             st.markdown("<br>", unsafe_allow_html=True)
 
             # Charts tabs
-            tab1, tab2, tab3 = st.tabs(["📈 Tendencia Histórica", "🎯 Distribución de Probabilidad", "📅 Variación Mensual"])
+            tab1, tab2, tab3, tab4 = st.tabs(["📈 Tendencia Histórica", "🎯 Distribución de Probabilidad", "📅 Variación Mensual", "🕸️ Radar de Riesgo"])
 
             with tab1:
                 solid_x = [t["year"] for t in result["trend"] if not t["projected"]]
@@ -727,6 +836,51 @@ elif "📊" in page:
                 )
                 st.plotly_chart(fig3, use_container_width=True, config={"displayModeBar": False})
                 st.markdown(f'<div style="font-size:11px;color:#6B7280;text-align:center;margin-top:-10px;">Casos estimados por mes — mes más crítico: <strong style="color:#DC2626;">{max_m["month"]}</strong></div>', unsafe_allow_html=True)
+
+            with tab4:
+                radar_cats = ["Frecuencia", "Gravedad", "Víctimas", "Estacionalidad", "Proyección", "Impacto Social"]
+                score_norm = result["score"] / 6.0
+                radar_vals = [
+                    min(score_norm * 1.1, 1.0),
+                    RISK_LEVELS.get(result["gravedad"], {"color":"#888"}) and score_norm * 0.95,
+                    min(result["victimas"] / 200, 1.0),
+                    max(result["monthly"], key=lambda x: x["value"])["value"] / 6.0,
+                    result["trend"][-1]["score"] / 6.0,
+                    score_norm * 1.05,
+                ]
+                radar_vals = [round(min(v, 1.0), 2) for v in radar_vals]
+                radar_vals_pct = [round(v * 100) for v in radar_vals]
+                fig4 = go.Figure()
+                fig4.add_trace(go.Scatterpolar(
+                    r=radar_vals_pct,
+                    theta=radar_cats,
+                    fill='toself',
+                    fillcolor='rgba(124,58,237,0.15)',
+                    line=dict(color='#7C3AED', width=2.5),
+                    marker=dict(size=7, color='#7C3AED'),
+                    name=f'{form.get("dep",dep)}'
+                ))
+                fig4.add_trace(go.Scatterpolar(
+                    r=[50]*len(radar_cats),
+                    theta=radar_cats,
+                    line=dict(color='#E2E8F0', width=1, dash='dot'),
+                    showlegend=False,
+                    mode='lines'
+                ))
+                fig4.update_layout(
+                    polar=dict(
+                        radialaxis=dict(visible=True, range=[0,100], tickfont=dict(size=9), gridcolor='#EDE9FE'),
+                        angularaxis=dict(tickfont=dict(size=11, color='#1E1B4B')),
+                        bgcolor='rgba(0,0,0,0)'
+                    ),
+                    height=300, margin=dict(l=50,r=50,t=30,b=30),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    showlegend=True,
+                    legend=dict(font=dict(size=10)),
+                    font=dict(family='Plus Jakarta Sans')
+                )
+                st.plotly_chart(fig4, use_container_width=True, config={"displayModeBar": False})
+                st.markdown('<div style="font-size:11px;color:#6B7280;text-align:center;margin-top:-10px;">Perfil multidimensional de riesgo — valores normalizados 0–100%</div>', unsafe_allow_html=True)
 
             st.markdown("<br>", unsafe_allow_html=True)
 
@@ -867,7 +1021,71 @@ elif "🗺️" in page:
         st.markdown('<div class="sh-card">', unsafe_allow_html=True)
         st.markdown('<div style="font-size:12px;font-weight:700;color:#A78BFA;margin-bottom:16px;text-transform:uppercase;letter-spacing:1.2px;">🇨🇴 Colombia — Nivel de Riesgo por Departamento</div>', unsafe_allow_html=True)
 
-        # SVG geographic map of Colombia (approximate)
+        # ── Plotly choropleth map usando GeoJSON de Colombia ──────────────────
+        import plotly.express as px, json, urllib.request
+        GEOJSON_URL = "https://raw.githubusercontent.com/hananinas/colombia-geojson/main/colombia.geo.json"
+        @st.cache_data
+        def load_geojson():
+            try:
+                with urllib.request.urlopen(GEOJSON_URL, timeout=5) as r:
+                    return json.loads(r.read())
+            except Exception:
+                return None
+
+        geojson = load_geojson()
+        dep_scores = [{"Departamento": k, "Score": v["score"], "Zona": v["zona"],
+                       "Gravedad": v["gravedad"], "Municipios": v["municipios"]}
+                      for k, v in CRIME_DATA.items()]
+        df_map = pd.DataFrame(dep_scores)
+
+        if geojson:
+            fig_map = px.choropleth(
+                df_map,
+                geojson=geojson,
+                locations="Departamento",
+                featureidkey="properties.NOMBRE_DPT",
+                color="Score",
+                color_continuous_scale=[
+                    [0.0,"#ECFDF5"],[0.25,"#10B981"],[0.42,"#3B82F6"],
+                    [0.58,"#F59E0B"],[0.67,"#EF4444"],[0.83,"#DC2626"],[1.0,"#7F1D1D"]
+                ],
+                range_color=[1.5, 5.0],
+                hover_name="Departamento",
+                hover_data={"Score":":.1f","Zona":True,"Gravedad":True,"Municipios":True},
+                labels={"Score":"Score Riesgo"},
+            )
+            fig_map.update_geos(
+                fitbounds="locations", visible=False,
+                bgcolor="rgba(0,0,0,0)"
+            )
+            fig_map.update_layout(
+                height=460, margin=dict(l=0,r=0,t=0,b=0),
+                paper_bgcolor="rgba(0,0,0,0)",
+                coloraxis_colorbar=dict(
+                    title="Score", thickness=12, len=0.6,
+                    tickfont=dict(size=10), titlefont=dict(size=11)
+                ),
+                font=dict(family="Plus Jakarta Sans")
+            )
+            st.plotly_chart(fig_map, use_container_width=True, config={"displayModeBar": False})
+            st.markdown('<div style="font-size:11px;color:#6B7280;text-align:center;margin-top:-8px;">Haz clic en un departamento de la lista de abajo para ver análisis detallado</div>', unsafe_allow_html=True)
+        else:
+            # Fallback: bar chart if GeoJSON fails
+            df_sorted_map = df_map.sort_values("Score", ascending=True)
+            bar_colors_map = [get_risk_color(s) for s in df_sorted_map["Score"]]
+            fig_fb = go.Figure(go.Bar(
+                x=df_sorted_map["Score"], y=df_sorted_map["Departamento"],
+                orientation="h", marker_color=bar_colors_map,
+                text=[f"{s:.1f}" for s in df_sorted_map["Score"]],
+                textposition="outside"
+            ))
+            fig_fb.update_layout(height=700, margin=dict(l=5,r=40,t=10,b=10),
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                xaxis=dict(range=[0,6.5], gridcolor="#EDE9FE"),
+                yaxis=dict(tickfont=dict(size=10)), showlegend=False)
+            st.plotly_chart(fig_fb, use_container_width=True, config={"displayModeBar": False})
+
+        # SVG geographic map of Colombia (approximate) — kept as fallback reference
         GEO = {
             "LA GUAJIRA":         (380,  28, 68, 45),
             "MAGDALENA":          (316,  55, 66, 52),
