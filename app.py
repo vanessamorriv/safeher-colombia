@@ -1115,26 +1115,22 @@ elif "🗺️" in page:
                 showlegend=False
             ))
 
-        fig_map.update_geos(
-            scope="south america",
-            lonaxis_range=[-82, -66],
-            lataxis_range=[-5, 13],
-            showland=True, landcolor="#F0F4FF",
-            showocean=True, oceancolor="#DBEAFE",
-            showcoastlines=True, coastlinecolor="#93C5FD",
-            showborders=True, bordercolor="#C4B5FD",
-            showrivers=True, rivercolor="#BFDBFE",
-            showcountries=True, countrycolor="#A78BFA",
-            bgcolor="rgba(0,0,0,0)",
-            resolution=50,
-        )
         fig_map.update_layout(
             height=500,
             margin=dict(l=0, r=0, t=0, b=0),
             paper_bgcolor="rgba(0,0,0,0)",
             geo=dict(
-                lonaxis_range=[-82, -66],
-                lataxis_range=[-5, 13],
+                scope="south america",
+                lonaxis=dict(range=[-82, -66]),
+                lataxis=dict(range=[-5, 13]),
+                showland=True, landcolor="#F0F4FF",
+                showocean=True, oceancolor="#DBEAFE",
+                showcoastlines=True, coastlinecolor="#93C5FD",
+                showborders=True, bordercolor="#C4B5FD",
+                showrivers=True, rivercolor="#BFDBFE",
+                showcountries=True, countrycolor="#A78BFA",
+                bgcolor="rgba(0,0,0,0)",
+                resolution=50,
             ),
             font=dict(family="Plus Jakarta Sans")
         )
