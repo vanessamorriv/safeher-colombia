@@ -10,4 +10,4 @@ joblib>=1.4.0
 anthropic
 groq
 plotly
- 
+folium==0.20.0
