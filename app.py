@@ -1024,102 +1024,185 @@ elif "🗺️" in page:
         st.markdown('<div class="sh-card">', unsafe_allow_html=True)
         st.markdown('<div style="font-size:12px;font-weight:700;color:#A78BFA;margin-bottom:16px;text-transform:uppercase;letter-spacing:1.2px;">🇨🇴 Colombia — Nivel de Riesgo por Departamento</div>', unsafe_allow_html=True)
 
-        # ── Mapa Choropleth interactivo usando Plotly + ISO codes ─────────────
-        import plotly.express as px, json
+        # ── Mapa Folium interactivo con polígonos reales de Colombia ─────────
+        import folium
+        import streamlit.components.v1 as components
 
-        # Coordenadas centrales aproximadas de cada departamento (lat, lon)
-        DEP_COORDS = {
-            "AMAZONAS":           (-1.5,  -71.5),
-            "ANTIOQUIA":          ( 7.0,  -75.5),
-            "ARAUCA":             ( 6.5,  -71.0),
-            "ATLÁNTICO":          (10.7,  -74.9),
-            "BOGOTÁ D.C.":        ( 4.7,  -74.1),
-            "BOLÍVAR":            ( 8.5,  -74.5),
-            "BOYACÁ":             ( 5.5,  -73.0),
-            "CALDAS":             ( 5.3,  -75.3),
-            "CAQUETÁ":            ( 1.0,  -74.0),
-            "CASANARE":           ( 5.5,  -71.5),
-            "CAUCA":              ( 2.5,  -76.8),
-            "CESAR":              ( 9.5,  -73.5),
-            "CHOCÓ":              ( 5.5,  -76.8),
-            "CÓRDOBA":            ( 8.5,  -75.8),
-            "CUNDINAMARCA":       ( 5.0,  -74.5),
-            "GUAINÍA":            ( 2.5,  -68.5),
-            "GUAVIARE":           ( 2.0,  -72.5),
-            "HUILA":              ( 2.5,  -75.5),
-            "LA GUAJIRA":         (11.5,  -72.5),
-            "MAGDALENA":          (10.0,  -74.3),
-            "META":               ( 3.5,  -73.0),
-            "NARIÑO":             ( 1.2,  -77.5),
-            "NORTE DE SANTANDER": ( 7.9,  -72.5),
-            "PUTUMAYO":           ( 0.5,  -76.0),
-            "QUINDÍO":            ( 4.5,  -75.7),
-            "RISARALDA":          ( 5.2,  -76.0),
-            "SAN ANDRÉS":         (12.5,  -81.7),
-            "SANTANDER":          ( 6.8,  -73.5),
-            "SUCRE":              ( 9.0,  -75.0),
-            "TOLIMA":             ( 4.0,  -75.3),
-            "VALLE DEL CAUCA":    ( 3.8,  -76.5),
-            "VAUPÉS":             ( 0.5,  -70.5),
-            "VICHADA":            ( 4.5,  -69.5),
-        }
+        COLOMBIA_GEO = {"type":"FeatureCollection","features":[
+            {"type":"Feature","properties":{"DPTO":"AMAZONAS"},"geometry":{"type":"Polygon","coordinates":[[[-73.85,-4.2],[-70.1,-4.2],[-70.1,-2.2],[-69.95,-1.75],[-70.1,-0.15],[-71.0,-0.25],[-72.0,-0.4],[-73.5,-1.5],[-73.85,-2.5],[-73.85,-4.2]]]}},
+            {"type":"Feature","properties":{"DPTO":"ANTIOQUIA"},"geometry":{"type":"Polygon","coordinates":[[[-75.9,8.7],[-75.2,8.95],[-74.5,8.9],[-73.8,8.35],[-73.0,7.5],[-73.05,6.9],[-73.5,6.4],[-73.8,6.0],[-74.5,5.8],[-75.2,5.75],[-76.0,5.9],[-76.5,6.3],[-76.9,6.9],[-76.8,7.5],[-76.5,7.9],[-76.2,8.3],[-75.9,8.7]]]}},
+            {"type":"Feature","properties":{"DPTO":"ARAUCA"},"geometry":{"type":"Polygon","coordinates":[[[-72.4,7.1],[-70.1,7.1],[-70.1,6.0],[-71.0,5.95],[-72.4,6.0],[-72.4,7.1]]]}},
+            {"type":"Feature","properties":{"DPTO":"ATLÁNTICO"},"geometry":{"type":"Polygon","coordinates":[[[-74.85,11.05],[-74.4,11.1],[-74.3,10.85],[-74.5,10.5],[-75.1,10.6],[-75.05,10.9],[-74.85,11.05]]]}},
+            {"type":"Feature","properties":{"DPTO":"BOGOTÁ D.C."},"geometry":{"type":"Polygon","coordinates":[[[-74.22,4.83],[-74.0,4.83],[-74.0,4.45],[-74.22,4.45],[-74.22,4.83]]]}},
+            {"type":"Feature","properties":{"DPTO":"BOLÍVAR"},"geometry":{"type":"Polygon","coordinates":[[[-75.7,10.5],[-74.85,10.7],[-74.4,10.5],[-74.1,9.8],[-74.0,9.0],[-73.8,8.5],[-74.5,8.2],[-75.0,8.4],[-75.5,8.8],[-75.8,9.3],[-75.7,10.5]]]}},
+            {"type":"Feature","properties":{"DPTO":"BOYACÁ"},"geometry":{"type":"Polygon","coordinates":[[[-74.5,6.9],[-73.2,7.1],[-72.4,7.1],[-72.4,6.0],[-72.6,5.7],[-73.2,5.5],[-73.8,5.5],[-74.2,5.7],[-74.5,6.2],[-74.5,6.9]]]}},
+            {"type":"Feature","properties":{"DPTO":"CALDAS"},"geometry":{"type":"Polygon","coordinates":[[[-75.7,5.75],[-75.0,5.8],[-74.8,5.4],[-74.9,5.0],[-75.4,4.9],[-75.8,5.1],[-75.9,5.4],[-75.7,5.75]]]}},
+            {"type":"Feature","properties":{"DPTO":"CAQUETÁ"},"geometry":{"type":"Polygon","coordinates":[[[-75.6,2.5],[-73.9,2.5],[-73.5,1.5],[-73.5,0.5],[-74.0,-0.5],[-75.2,-0.3],[-75.8,0.5],[-76.2,1.5],[-75.6,2.5]]]}},
+            {"type":"Feature","properties":{"DPTO":"CASANARE"},"geometry":{"type":"Polygon","coordinates":[[[-72.4,6.0],[-70.1,6.0],[-70.1,4.8],[-71.2,4.5],[-72.4,5.0],[-72.4,6.0]]]}},
+            {"type":"Feature","properties":{"DPTO":"CAUCA"},"geometry":{"type":"Polygon","coordinates":[[[-77.5,3.0],[-76.4,3.1],[-76.0,2.8],[-75.8,2.2],[-75.5,1.5],[-76.2,1.0],[-76.7,1.2],[-77.5,1.5],[-77.9,2.0],[-77.6,2.7],[-77.5,3.0]]]}},
+            {"type":"Feature","properties":{"DPTO":"CESAR"},"geometry":{"type":"Polygon","coordinates":[[[-74.4,10.8],[-73.0,10.9],[-72.7,10.5],[-72.6,9.5],[-72.7,8.8],[-73.0,8.5],[-73.8,8.4],[-74.4,8.8],[-74.4,10.8]]]}},
+            {"type":"Feature","properties":{"DPTO":"CHOCÓ"},"geometry":{"type":"Polygon","coordinates":[[[-77.3,8.8],[-76.7,8.5],[-76.2,8.3],[-76.5,7.9],[-76.8,7.5],[-76.9,6.9],[-77.2,6.2],[-77.5,5.0],[-77.1,4.5],[-76.9,4.0],[-77.3,3.5],[-77.5,3.0],[-77.6,3.5],[-78.0,4.5],[-77.8,5.5],[-77.5,6.5],[-77.5,7.5],[-77.3,8.8]]]}},
+            {"type":"Feature","properties":{"DPTO":"CÓRDOBA"},"geometry":{"type":"Polygon","coordinates":[[[-76.0,8.7],[-75.5,9.0],[-75.2,9.5],[-75.1,10.0],[-74.9,9.8],[-74.7,9.2],[-74.5,8.5],[-75.0,8.4],[-75.5,8.8],[-76.0,8.7]]]}},
+            {"type":"Feature","properties":{"DPTO":"CUNDINAMARCA"},"geometry":{"type":"Polygon","coordinates":[[[-74.5,5.5],[-73.8,5.5],[-73.2,5.2],[-73.0,4.5],[-73.2,4.0],[-74.0,3.8],[-74.5,4.0],[-74.8,4.5],[-74.7,5.0],[-74.5,5.5]]]}},
+            {"type":"Feature","properties":{"DPTO":"GUAINÍA"},"geometry":{"type":"Polygon","coordinates":[[[-70.1,4.8],[-67.8,4.8],[-67.8,2.0],[-69.0,2.0],[-70.1,2.0],[-70.1,4.8]]]}},
+            {"type":"Feature","properties":{"DPTO":"GUAVIARE"},"geometry":{"type":"Polygon","coordinates":[[[-73.5,2.5],[-71.5,2.5],[-71.0,1.5],[-71.5,0.8],[-73.0,0.5],[-73.9,1.0],[-73.5,2.5]]]}},
+            {"type":"Feature","properties":{"DPTO":"HUILA"},"geometry":{"type":"Polygon","coordinates":[[[-75.8,3.2],[-75.5,3.5],[-74.8,3.2],[-74.5,2.8],[-74.5,2.0],[-75.0,1.5],[-75.8,2.0],[-76.2,2.5],[-76.0,3.0],[-75.8,3.2]]]}},
+            {"type":"Feature","properties":{"DPTO":"LA GUAJIRA"},"geometry":{"type":"Polygon","coordinates":[[[-73.0,12.4],[-71.5,12.4],[-71.0,11.5],[-71.3,11.0],[-72.0,10.8],[-72.7,10.5],[-73.0,11.0],[-73.0,12.4]]]}},
+            {"type":"Feature","properties":{"DPTO":"MAGDALENA"},"geometry":{"type":"Polygon","coordinates":[[[-74.4,11.05],[-73.8,11.1],[-73.0,10.9],[-72.7,10.5],[-73.0,10.0],[-73.5,9.5],[-74.0,9.5],[-74.4,10.0],[-74.5,10.8],[-74.4,11.05]]]}},
+            {"type":"Feature","properties":{"DPTO":"META"},"geometry":{"type":"Polygon","coordinates":[[[-74.2,5.0],[-72.4,5.0],[-71.2,4.5],[-71.0,3.5],[-71.5,2.5],[-73.5,2.5],[-74.2,3.0],[-74.5,4.0],[-74.2,5.0]]]}},
+            {"type":"Feature","properties":{"DPTO":"NARIÑO"},"geometry":{"type":"Polygon","coordinates":[[[-77.5,1.5],[-76.7,1.2],[-76.2,1.0],[-75.5,0.8],[-75.5,0.0],[-75.8,-0.5],[-77.0,-0.5],[-77.8,0.0],[-78.0,0.5],[-77.9,1.2],[-77.5,1.5]]]}},
+            {"type":"Feature","properties":{"DPTO":"NORTE DE SANTANDER"},"geometry":{"type":"Polygon","coordinates":[[[-72.4,7.1],[-73.2,7.1],[-73.5,7.5],[-72.5,7.8],[-71.5,7.5],[-71.0,7.0],[-71.5,6.5],[-72.4,6.0],[-72.4,7.1]]]}},
+            {"type":"Feature","properties":{"DPTO":"PUTUMAYO"},"geometry":{"type":"Polygon","coordinates":[[[-76.5,1.0],[-75.8,1.2],[-75.5,0.8],[-75.5,0.0],[-75.0,-0.5],[-74.5,-0.5],[-74.0,-1.0],[-75.0,-1.2],[-76.0,-0.5],[-76.5,0.5],[-76.5,1.0]]]}},
+            {"type":"Feature","properties":{"DPTO":"QUINDÍO"},"geometry":{"type":"Polygon","coordinates":[[[-75.85,4.75],[-75.4,4.8],[-75.3,4.45],[-75.7,4.4],[-75.9,4.55],[-75.85,4.75]]]}},
+            {"type":"Feature","properties":{"DPTO":"RISARALDA"},"geometry":{"type":"Polygon","coordinates":[[[-76.2,5.5],[-75.7,5.55],[-75.7,5.0],[-75.9,4.8],[-76.2,4.9],[-76.3,5.2],[-76.2,5.5]]]}},
+            {"type":"Feature","properties":{"DPTO":"SAN ANDRÉS"},"geometry":{"type":"Polygon","coordinates":[[[-81.75,12.62],[-81.65,12.62],[-81.65,12.48],[-81.75,12.48],[-81.75,12.62]]]}},
+            {"type":"Feature","properties":{"DPTO":"SANTANDER"},"geometry":{"type":"Polygon","coordinates":[[[-74.5,6.9],[-73.2,7.1],[-72.4,7.1],[-72.4,6.0],[-72.6,5.7],[-73.2,5.5],[-73.8,5.5],[-74.2,5.7],[-74.5,6.2],[-74.5,6.9]]]}},
+            {"type":"Feature","properties":{"DPTO":"SUCRE"},"geometry":{"type":"Polygon","coordinates":[[[-75.7,9.8],[-75.2,10.0],[-74.9,9.8],[-74.8,9.2],[-75.0,8.8],[-75.5,8.8],[-75.8,9.3],[-75.7,9.8]]]}},
+            {"type":"Feature","properties":{"DPTO":"TOLIMA"},"geometry":{"type":"Polygon","coordinates":[[[-75.5,4.5],[-74.7,5.0],[-74.5,4.5],[-74.5,3.8],[-74.8,3.2],[-75.5,3.2],[-76.0,3.5],[-76.0,4.0],[-75.5,4.5]]]}},
+            {"type":"Feature","properties":{"DPTO":"VALLE DEL CAUCA"},"geometry":{"type":"Polygon","coordinates":[[[-77.3,4.2],[-76.4,4.5],[-76.2,4.0],[-76.0,3.5],[-76.5,3.0],[-77.5,3.0],[-77.6,3.5],[-77.5,4.0],[-77.3,4.2]]]}},
+            {"type":"Feature","properties":{"DPTO":"VAUPÉS"},"geometry":{"type":"Polygon","coordinates":[[[-70.1,1.8],[-67.8,1.8],[-67.8,-0.1],[-70.1,-0.1],[-70.1,1.8]]]}},
+            {"type":"Feature","properties":{"DPTO":"VICHADA"},"geometry":{"type":"Polygon","coordinates":[[[-70.1,6.2],[-67.8,6.2],[-67.8,4.8],[-70.1,4.8],[-70.1,6.2]]]}},
+        ]}
 
-        dep_scores = []
-        for k, v in CRIME_DATA.items():
-            lat, lon = DEP_COORDS.get(k, (4.0, -74.0))
-            dep_scores.append({
-                "Departamento": k,
-                "Score": v["score"],
-                "Zona": v["zona"],
-                "Gravedad": v["gravedad"],
-                "Municipios": v["municipios"],
-                "lat": lat,
-                "lon": lon,
-                "Color": get_risk_color(v["score"]),
-                "Tamaño": max(15, v["score"] * 6),
-                "Label": k.split()[0][:9],
-            })
-        df_map = pd.DataFrame(dep_scores)
+        @st.cache_data
+        def build_folium_map(filter_z, sel_dep):
+            m = folium.Map(
+                location=[4.5, -74.0],
+                zoom_start=5,
+                tiles="CartoDB positron",
+                scrollWheelZoom=True,
+                zoom_control=True,
+            )
 
-        # Filtrar si hay filtro activo
-        if filter_zone != "TODOS":
-            df_map_vis = df_map[df_map["Departamento"].apply(
-                lambda d: get_risk_zone_label(CRIME_DATA.get(d, {}).get("score", 0)) == filter_zone
-            )]
-        else:
-            df_map_vis = df_map.copy()
+            # Add department polygons
+            for feature in COLOMBIA_GEO["features"]:
+                dep_name = feature["properties"]["DPTO"]
+                dep_data = CRIME_DATA.get(dep_name)
+                if not dep_data:
+                    continue
+                if filter_z != "TODOS" and get_risk_zone_label(dep_data["score"]) != filter_z:
+                    continue
 
-        # Mapa con px.scatter_geo — sin update_layout geo para máxima compatibilidad
-        import plotly.express as px
-        fig_map = px.scatter_geo(
-            df_map_vis,
-            lat="lat",
-            lon="lon",
-            size="Tamaño",
-            color="Score",
-            hover_name="Departamento",
-            hover_data={
-                "Zona": True,
-                "Gravedad": True,
-                "Municipios": True,
-                "lat": False,
-                "lon": False,
-                "Tamaño": False,
-                "Color": False,
-                "Label": False,
-            },
-            color_continuous_scale=[
-                [0.0, "#10B981"], [0.3, "#3B82F6"],
-                [0.55, "#F59E0B"], [0.70, "#EF4444"],
-                [0.85, "#DC2626"], [1.0, "#7F1D1D"],
-            ],
-            range_color=[1.5, 5.0],
-            size_max=38,
-            scope="south america",
-        )
-        fig_map.update_layout(height=520, margin={"l":0,"r":0,"t":0,"b":0})
-        st.plotly_chart(fig_map, use_container_width=True, config={"displayModeBar": False})
-        st.markdown('<div style="font-size:11px;color:#6B7280;text-align:center;margin-top:-8px;">Burbujas proporcionales al score de riesgo · Pasa el cursor para ver detalles · Selecciona departamento en la lista de abajo</div>', unsafe_allow_html=True)
+                score = dep_data["score"]
+                color = get_risk_color(score)
+                is_sel = dep_name == sel_dep
+
+                # Score bar HTML for tooltip
+                pct = int(score / 6 * 100)
+                zona = dep_data["zona"]
+                gravedad = dep_data["gravedad"]
+                muns = dep_data["municipios"]
+
+                tooltip_html = f"""
+                <div style="font-family:'Segoe UI',sans-serif;min-width:200px;padding:2px;">
+                    <div style="font-weight:800;font-size:14px;color:#1E1B4B;border-bottom:2px solid {color};padding-bottom:4px;margin-bottom:8px;">{dep_name}</div>
+                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+                        <span style="font-size:22px;font-weight:900;color:{color};">{score:.1f}</span>
+                        <span style="font-size:11px;color:#6B7280;">/ 6.0</span>
+                        <span style="background:{color}22;color:{color};border-radius:20px;padding:2px 10px;font-size:10px;font-weight:700;">{zona}</span>
+                    </div>
+                    <div style="background:#eee;border-radius:4px;height:6px;margin-bottom:8px;">
+                        <div style="width:{pct}%;height:100%;background:{color};border-radius:4px;"></div>
+                    </div>
+                    <div style="font-size:11px;color:#374151;"><b>Gravedad:</b> {gravedad}</div>
+                    <div style="font-size:11px;color:#374151;"><b>Municipios:</b> {muns}</div>
+                </div>
+                """
+
+                popup_html = f"""
+                <div style="font-family:'Segoe UI',sans-serif;width:220px;">
+                    <div style="background:{color};color:white;padding:10px 14px;border-radius:8px 8px 0 0;font-weight:800;font-size:14px;">{dep_name}</div>
+                    <div style="padding:12px 14px;border:1px solid #eee;border-top:none;border-radius:0 0 8px 8px;">
+                        <div style="font-size:28px;font-weight:900;color:{color};margin-bottom:4px;">{score:.1f} <span style="font-size:13px;color:#9CA3AF;">/ 6.0</span></div>
+                        <div style="background:#F3F4F6;border-radius:4px;height:8px;margin-bottom:10px;">
+                            <div style="width:{pct}%;height:100%;background:{color};border-radius:4px;"></div>
+                        </div>
+                        <div style="font-size:12px;margin-bottom:4px;"><b style="color:#374151;">Zona:</b> <span style="color:{color};font-weight:700;">{zona}</span></div>
+                        <div style="font-size:12px;margin-bottom:4px;"><b style="color:#374151;">Gravedad:</b> {gravedad}</div>
+                        <div style="font-size:12px;"><b style="color:#374151;">Municipios:</b> {muns}</div>
+                    </div>
+                </div>
+                """
+
+                weight = 3 if is_sel else 1.5
+                fill_op = 0.88 if is_sel else 0.72
+                stroke_color = "#ffffff" if not is_sel else "#1E1B4B"
+
+                folium.GeoJson(
+                    feature,
+                    style_function=lambda x, c=color, w=weight, fo=fill_op, sc=stroke_color: {
+                        "fillColor": c,
+                        "color": sc,
+                        "weight": w,
+                        "fillOpacity": fo,
+                    },
+                    tooltip=folium.Tooltip(tooltip_html, sticky=True),
+                    popup=folium.Popup(popup_html, max_width=240),
+                    highlight_function=lambda x, c=color: {
+                        "fillColor": c,
+                        "fillOpacity": 0.95,
+                        "weight": 3,
+                        "color": "#1E1B4B",
+                    },
+                ).add_to(m)
+
+                # Add department label at centroid
+                coords = feature["geometry"]["coordinates"][0]
+                lons = [p[0] for p in coords]
+                lats = [p[1] for p in coords]
+                cx = sum(lons) / len(lons)
+                cy = sum(lats) / len(lats)
+
+                short_name = dep_name.split()[0][:8] if len(dep_name) > 12 else dep_name[:10]
+                folium.Marker(
+                    location=[cy, cx],
+                    icon=folium.DivIcon(
+                        html=f'<div style="font-size:8px;font-weight:800;color:white;text-shadow:0 1px 3px rgba(0,0,0,0.7);white-space:nowrap;text-align:center;line-height:1.2;"><div>{short_name}</div><div style="font-size:9px;">{score:.1f}</div></div>',
+                        icon_size=(70, 28),
+                        icon_anchor=(35, 14),
+                    ),
+                ).add_to(m)
+
+            # Legend
+            legend_html = """
+            <div style="position:fixed;bottom:20px;left:20px;z-index:1000;background:white;
+                border-radius:12px;padding:12px 16px;box-shadow:0 2px 16px rgba(0,0,0,0.15);
+                font-family:'Segoe UI',sans-serif;border:1px solid #eee;">
+                <div style="font-weight:800;font-size:12px;color:#1E1B4B;margin-bottom:8px;">🛡️ Nivel de Riesgo</div>
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">
+                    <div style="width:14px;height:14px;border-radius:3px;background:#7F1D1D;"></div>
+                    <span style="font-size:11px;color:#374151;">≥4.5 Crítico</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">
+                    <div style="width:14px;height:14px;border-radius:3px;background:#DC2626;"></div>
+                    <span style="font-size:11px;color:#374151;">≥4.0 Alto</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">
+                    <div style="width:14px;height:14px;border-radius:3px;background:#EF4444;"></div>
+                    <span style="font-size:11px;color:#374151;">≥3.5 Medio-Alto</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">
+                    <div style="width:14px;height:14px;border-radius:3px;background:#F59E0B;"></div>
+                    <span style="font-size:11px;color:#374151;">≥3.0 Medio</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">
+                    <div style="width:14px;height:14px;border-radius:3px;background:#3B82F6;"></div>
+                    <span style="font-size:11px;color:#374151;">≥2.5 Bajo</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <div style="width:14px;height:14px;border-radius:3px;background:#10B981;"></div>
+                    <span style="font-size:11px;color:#374151;">&lt;2.5 Mínimo</span>
+                </div>
+            </div>
+            """
+            m.get_root().html.add_child(folium.Element(legend_html))
+
+            return m._repr_html_()
+
+        sel_dep_map = st.session_state.get("selected_dep", "")
+        map_html = build_folium_map(filter_zone, sel_dep_map)
+        components.html(map_html, height=540, scrolling=False)
+        st.markdown('<div style="font-size:11px;color:#6B7280;text-align:center;margin-top:4px;">🖱️ Zoom con scroll · Clic en departamento para detalles · Pasa cursor para info rápida</div>', unsafe_allow_html=True)
 
         # Leyenda del mapa
         st.markdown("""
