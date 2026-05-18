@@ -1068,78 +1068,81 @@ elif "🗺️" in page:
         for k, v in CRIME_DATA.items():
             lat, lon = DEP_COORDS.get(k, (4.0, -74.0))
             dep_scores.append({
-                "Departamento": k, "Score": v["score"],
-                "Zona": v["zona"], "Gravedad": v["gravedad"],
+                "Departamento": k,
+                "Score": v["score"],
+                "Zona": v["zona"],
+                "Gravedad": v["gravedad"],
                 "Municipios": v["municipios"],
-                "lat": lat, "lon": lon,
+                "lat": lat,
+                "lon": lon,
                 "Color": get_risk_color(v["score"]),
-                "Texto": f"{k}<br>Score: {v['score']:.1f}/6.0<br>Zona: {v['zona']}<br>Gravedad: {v['gravedad']}"
+                "Tamaño": max(15, v["score"] * 6),
+                "Label": k.split()[0][:9],
             })
         df_map = pd.DataFrame(dep_scores)
 
         # Filtrar si hay filtro activo
         if filter_zone != "TODOS":
-            df_map_vis = df_map[df_map["Zona"].apply(lambda z: get_risk_zone_label(
-                CRIME_DATA.get(df_map[df_map["Zona"]==z]["Departamento"].iloc[0] if len(df_map[df_map["Zona"]==z])>0 else "", {}).get("score", 0)
-            ) == filter_zone if False else True)]
+            df_map_vis = df_map[df_map["Departamento"].apply(
+                lambda d: get_risk_zone_label(CRIME_DATA.get(d, {}).get("score", 0)) == filter_zone
+            )]
         else:
-            df_map_vis = df_map
+            df_map_vis = df_map.copy()
 
-        # Crear mapa de burbujas sobre Colombia
-        fig_map = go.Figure()
-
-        # Añadir capa de burbujas por departamento
-        for _, row_d in df_map_vis.iterrows():
-            color = get_risk_color(row_d["Score"])
-            fig_map.add_trace(go.Scattergeo(
-                lon=[row_d["lon"]],
-                lat=[row_d["lat"]],
-                mode="markers+text",
-                marker=dict(
-                    size=max(18, row_d["Score"] * 7),
-                    color=color,
-                    opacity=0.82,
-                    line=dict(color="white", width=1.2)
-                ),
-                text=[f"{row_d['Departamento'].split()[0][:8]}"],
-                textposition="middle center",
-                textfont=dict(size=7, color="white", family="Plus Jakarta Sans"),
-                hovertemplate=(
-                    f"<b>{row_d['Departamento']}</b><br>"
-                    f"Score: {row_d['Score']:.1f}/6.0<br>"
-                    f"Zona: {row_d['Zona']}<br>"
-                    f"Gravedad: {row_d['Gravedad']}<br>"
-                    f"Municipios: {row_d['Municipios']}"
-                    "<extra></extra>"
-                ),
-                showlegend=False
-            ))
-
+        # Mapa con px.scatter_geo — API más estable y compatible
+        import plotly.express as px
+        fig_map = px.scatter_geo(
+            df_map_vis,
+            lat="lat",
+            lon="lon",
+            size="Tamaño",
+            color="Score",
+            hover_name="Departamento",
+            hover_data={"Score": ":.1f", "Zona": True, "Gravedad": True,
+                        "Municipios": True, "lat": False, "lon": False,
+                        "Tamaño": False, "Color": False, "Label": False},
+            color_continuous_scale=[
+                [0.0, "#10B981"], [0.3, "#3B82F6"],
+                [0.55, "#F59E0B"], [0.70, "#EF4444"],
+                [0.85, "#DC2626"], [1.0, "#7F1D1D"]
+            ],
+            range_color=[1.5, 5.0],
+            size_max=38,
+            labels={"Score": "Score Riesgo"},
+            scope="south america",
+        )
+        fig_map.update_traces(
+            marker=dict(opacity=0.85, line=dict(color="white", width=1)),
+            selector=dict(type="scattergeo")
+        )
         fig_map.update_layout(
-            height=500,
+            height=520,
             margin=dict(l=0, r=0, t=0, b=0),
             paper_bgcolor="rgba(0,0,0,0)",
+            coloraxis_colorbar=dict(
+                title="Score", thickness=12, len=0.55,
+                tickfont=dict(size=10), titlefont=dict(size=11),
+                x=1.0
+            ),
             geo=dict(
-                scope="south america",
-                lonaxis=dict(range=[-82, -66]),
-                lataxis=dict(range=[-5, 13]),
-                showland=True, landcolor="#F0F4FF",
+                showland=True, landcolor="#EEF2FF",
                 showocean=True, oceancolor="#DBEAFE",
                 showcoastlines=True, coastlinecolor="#93C5FD",
                 showborders=True, bordercolor="#C4B5FD",
-                showrivers=True, rivercolor="#BFDBFE",
                 showcountries=True, countrycolor="#A78BFA",
-                bgcolor="rgba(0,0,0,0)",
-                resolution=50,
+                showlakes=True, lakecolor="#BFDBFE",
+                lonaxis_range=[-82, -66],
+                lataxis_range=[-5, 13],
+                bgcolor="rgba(239,246,255,0.4)",
             ),
-            font=dict(family="Plus Jakarta Sans")
         )
         st.plotly_chart(fig_map, use_container_width=True, config={"displayModeBar": False, "scrollZoom": True})
-        st.markdown('<div style="font-size:11px;color:#6B7280;text-align:center;margin-top:-8px;">Burbujas proporcionales al score de riesgo · Pasa el cursor para detalles · Selecciona departamento en la lista de abajo</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:11px;color:#6B7280;text-align:center;margin-top:-8px;">Burbujas proporcionales al score de riesgo · Pasa el cursor para ver detalles · Selecciona departamento en la lista de abajo</div>', unsafe_allow_html=True)
 
         # Leyenda del mapa
         st.markdown("""
-        <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin:10px 0 4px;">
+        <div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center;margin:10px 0 4px;padding:8px 12px;
+            background:#F8FAFF;border-radius:12px;border:1px solid #EDE9FE;">
             <span style="font-size:11px;color:#7F1D1D;font-weight:700;">● ≥4.5 Crítico</span>
             <span style="font-size:11px;color:#DC2626;font-weight:700;">● ≥4.0 Alto</span>
             <span style="font-size:11px;color:#EF4444;font-weight:700;">● ≥3.5 Medio-Alto</span>
