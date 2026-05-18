@@ -732,7 +732,6 @@ elif "📊" in page:
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown('<div class="sh-card">', unsafe_allow_html=True)
     st.markdown('<div style="font-size:13px;font-weight:700;color:#7C3AED;margin-bottom:16px;">⚙️ Parámetros de Análisis</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -963,7 +962,6 @@ elif "📊" in page:
             st.markdown("<br>", unsafe_allow_html=True)
 
             # Comparativa bar chart
-            st.markdown('<div class="sh-card">', unsafe_allow_html=True)
             st.markdown(f'<div style="font-size:14px;font-weight:800;color:#1E1B4B;margin-bottom:4px;">📊 Comparativa por Tipo de Delito — {form.get("dep",dep)}</div>', unsafe_allow_html=True)
             st.markdown(f'<div style="font-size:11px;color:#6B7280;margin-bottom:16px;">Score de riesgo predicho para cada categoría en {form.get("año",año)}</div>', unsafe_allow_html=True)
             max_v = result["comparativa"][0]["value"] if result["comparativa"] else 1
@@ -1095,7 +1093,6 @@ elif "🗺️" in page:
     col_map, col_detail = st.columns([2, 1])
 
     with col_map:
-        st.markdown('<div class="sh-card">', unsafe_allow_html=True)
         st.markdown('<div style="font-size:12px;font-weight:700;color:#A78BFA;margin-bottom:16px;text-transform:uppercase;letter-spacing:1.2px;">🇨🇴 Colombia — Nivel de Riesgo por Departamento</div>', unsafe_allow_html=True)
 
         # ── Mapa Folium interactivo con polígonos reales de Colombia ─────────
@@ -1474,7 +1471,6 @@ elif "✈️" in page:
 
             col_a, col_b = st.columns(2)
             with col_a:
-                st.markdown('<div class="sh-card">', unsafe_allow_html=True)
                 st.markdown('<div style="font-weight:800;font-size:13px;color:#1E1B4B;margin-bottom:14px;">🏙️ Municipios del Departamento</div>', unsafe_allow_html=True)
                 chips = "".join([f'<span style="background:linear-gradient(135deg,#F5F3FF,#EDE9FE);color:#5B21B6;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:700;display:inline-block;margin:3px;border:1px solid #C4B5FD;">{m}</span>' for m in vr["muns"]])
                 st.markdown(f'<div style="display:flex;flex-wrap:wrap;gap:4px;">{chips}</div>', unsafe_allow_html=True)
@@ -1484,7 +1480,6 @@ elif "✈️" in page:
                 </div>""", unsafe_allow_html=True)
 
             with col_b:
-                st.markdown('<div class="sh-card">', unsafe_allow_html=True)
                 st.markdown('<div style="font-weight:800;font-size:13px;color:#1E1B4B;margin-bottom:14px;">⚠️ Riesgo por Tipo de Delito</div>', unsafe_allow_html=True)
                 zonas_l = ["MUY BAJO","BAJO","MEDIO-BAJO","MEDIO-ALTO","ALTO","MUY ALTO"]
                 delito_scores = sorted(
@@ -1506,7 +1501,6 @@ elif "✈️" in page:
                     </div>""", unsafe_allow_html=True)
 
             # AI Travel Tips
-            st.markdown('<div class="sh-card">', unsafe_allow_html=True)
             st.markdown(f'<div style="font-size:15px;font-weight:800;color:#1E1B4B;margin-bottom:6px;">🤖 Consejos Personalizados con IA para {vr["dep"]}</div>', unsafe_allow_html=True)
             st.markdown('<div style="font-size:12px;color:#A78BFA;margin-bottom:14px;">Recomendaciones generadas por IA basadas en datos de riesgo reales</div>', unsafe_allow_html=True)
             if "viaje_tips" not in st.session_state:
@@ -1645,7 +1639,6 @@ elif "📋" in page:
 
         col_form, col_info = st.columns([2, 1])
         with col_form:
-            st.markdown('<div class="sh-card">', unsafe_allow_html=True)
 
             # Anon toggle
             anon = st.toggle("🔒 Denuncia Anónima (Recomendado)", value=st.session_state.get("d_anon", True), key="d_anon_toggle")
@@ -1770,7 +1763,7 @@ Opciones seleccionadas: {', '.join(d_opts) if d_opts else 'Ninguna'}"""
 
         with col_info:
             st.markdown("""<div class="sh-card">
-                <div style="font-size:13px;font-weight:800;color:#5B21B6;margin-bottom:16px;">🏢 Entidades Oficiales</div>""", unsafe_allow_html=True)
+                <div style="font-size:13px;font-weight:800;color:#5B21B6;margin-bottom:16px;">🏢 Entidades Oficiales</div></div>""", unsafe_allow_html=True)
             entidades_d = [
                 ("⚖️","Fiscalía General","Denuncias penales en línea","https://www.fiscalia.gov.co","#7C3AED"),
                 ("🏠","Comisaría de Familia","Violencia intrafamiliar","tel:123","#1D4ED8"),
@@ -1900,7 +1893,6 @@ FORMATO: Español cálido y cercano, máx 200 palabras, emojis con moderación (
                     st.rerun()
                 st.markdown(f'<div style="font-size:9px;color:#A78BFA;text-align:center;margin-top:-8px;margin-bottom:6px;">{label}</div>', unsafe_allow_html=True)
 
-        st.markdown('<div class="sh-card" style="margin-top:14px;">', unsafe_allow_html=True)
         st.markdown('<div style="font-size:12px;font-weight:700;color:#1E1B4B;margin-bottom:10px;">💜 SARA puede ayudarte con:</div>', unsafe_allow_html=True)
         for ic, txt in [("🔒","Confidencial 100%"),("⚡","Respuesta empática"),("🧠","Técnicas de calma"),
                         ("⚖️","Orientación legal"),("📍","Recursos cercanos"),("💬","Escucharte sin juzgar"),
@@ -1911,7 +1903,7 @@ FORMATO: Español cálido y cercano, máx 200 palabras, emojis con moderación (
 
         st.markdown("""<div style="background:linear-gradient(135deg,#FFF1F2,#FEE2E2);border:1.5px solid #FECDD3;
             border-radius:16px;padding:16px;margin-top:4px;">
-            <div style="font-size:11px;font-weight:800;color:#9F1239;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.8px;">🚨 Emergencia</div>""", unsafe_allow_html=True)
+            <div style="font-size:11px;font-weight:800;color:#9F1239;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.8px;">🚨 Emergencia</div></div>""", unsafe_allow_html=True)
         for num, desc, sub in [("123","Policía","24/7"),("155","Línea Mujer","Gratis 24/7"),("137","Salud Mental","Apoyo")]:
             st.markdown(f'<a href="tel:{num}" style="display:flex;justify-content:space-between;align-items:center;text-decoration:none;padding:9px 0;border-bottom:1px solid #FECDD3;">'
                        f'<span style="font-size:18px;color:#BE123C;font-weight:900;font-family:Georgia,serif;">{num}</span>'
@@ -1970,7 +1962,7 @@ FORMATO: Español cálido y cercano, máx 200 palabras, emojis con moderación (
         st.markdown("""<div style="background:linear-gradient(135deg,#FAFAFA,#F5F3FF);padding:12px 24px 10px;
             border:1px solid #EDE9FE;border-top:none;">
             <div style="font-size:10px;color:#A78BFA;margin-bottom:8px;font-weight:700;letter-spacing:0.8px;">RESPUESTAS RÁPIDAS:</div>
-        """, unsafe_allow_html=True)
+        </div>""", unsafe_allow_html=True)
         quick_replies = ["Necesito ayuda urgente 🆘","¿Cómo denuncio?","Me siento sola y asustada",
                          "¿Cuáles son mis derechos?","Ejercicio para calmarme 🧘","Me están amenazando",
                          "¿Qué hace esta app?","Apoyo psicológico"]
@@ -1986,7 +1978,6 @@ FORMATO: Español cálido y cercano, máx 200 palabras, emojis con moderación (
                     st.rerun()
 
         # Input form
-        st.markdown('<div style="background:#fff;border:1px solid #EDE9FE;border-radius:0 0 22px 22px;padding:14px 24px;">', unsafe_allow_html=True)
         with st.form("sara_form", clear_on_submit=True):
             col_inp, col_send = st.columns([5, 1])
             with col_inp:
@@ -2177,7 +2168,7 @@ elif "ℹ️" in page:
                 Sistema de Información Estadístico de la <strong>Policía Nacional de Colombia</strong>.
                 Plataforma integral de protección, prevención y apoyo para mujeres.
             </p>
-            <div style="font-weight:800;color:#1E1B4B;margin-bottom:14px;font-size:14px;">👩‍💻 Equipo de Desarrollo:</div>""", unsafe_allow_html=True)
+            <div style="font-weight:800;color:#1E1B4B;margin-bottom:14px;font-size:14px;">👩‍💻 Equipo de Desarrollo:</div></div>""", unsafe_allow_html=True)
         for name in ["Laura Sofia Beltrán","Dana Yaray Vargas","Vanessa Mora"]:
             st.markdown(f"""<div style="background:linear-gradient(135deg,#F5F3FF,#EDE9FE);border-radius:14px;padding:13px 18px;
                 display:flex;align-items:center;gap:14px;margin-bottom:10px;border:1px solid #C4B5FD;">
@@ -2187,7 +2178,7 @@ elif "ℹ️" in page:
             </div>""", unsafe_allow_html=True)
 
         st.markdown("""<div class="sh-card">
-            <div style="font-weight:800;color:#5B21B6;font-size:16px;margin-bottom:16px;">🤖 Modelos de Machine Learning</div>""", unsafe_allow_html=True)
+            <div style="font-weight:800;color:#5B21B6;font-size:16px;margin-bottom:16px;">🤖 Modelos de Machine Learning</div></div>""", unsafe_allow_html=True)
         for ti, al, ta, co in [
             ("📊 Nivel de Gravedad","XGBoost + LightGBM","8 clases: MÍNIMO → CRÍTICO","#4C1D95"),
             ("🗺️ Zona de Riesgo","XGBoost + LightGBM","6 clases: MUY BAJO → MUY ALTO","#1D4ED8"),
@@ -2210,7 +2201,6 @@ elif "ℹ️" in page:
             <strong>123</strong> o <strong>Línea 155</strong>.</p>
         </div>""", unsafe_allow_html=True)
 
-        st.markdown('<div class="sh-card">', unsafe_allow_html=True)
         st.markdown('<div style="font-weight:800;color:#1E1B4B;font-size:14px;margin-bottom:16px;">🛠️ Stack Tecnológico</div>', unsafe_allow_html=True)
         for tech, pct, color in [
             ("Python + Streamlit","95%","#5B21B6"),("XGBoost","92%","#1D4ED8"),("LightGBM","90%","#059669"),
@@ -2227,7 +2217,6 @@ elif "ℹ️" in page:
                 </div>
             </div>""", unsafe_allow_html=True)
 
-        st.markdown('<div class="sh-card">', unsafe_allow_html=True)
         st.markdown('<div style="font-weight:800;color:#5B21B6;font-size:14px;margin-bottom:14px;">📊 Cobertura del Sistema</div>', unsafe_allow_html=True)
         for v, k in [("Colombia completa","Cobertura"),("33","Departamentos"),("1.121","Municipios"),
                      ("6","Tipos de delito"),("Policía Nacional","Fuente de datos"),("2019–2027","Período de análisis")]:
