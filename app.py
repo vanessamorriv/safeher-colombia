@@ -406,7 +406,6 @@ DELIT_FACTOR = {
     "VIOLENCIA INTRAFAMILIAR": 1.0, "LESIONES PERSONALES": 0.9, "HURTO": 0.8
 }
 
-# ── Coordenadas de municipios conocidos ───────────────────────────────────────
 MUN_COORDS = {
     "MEDELLÍN":     [6.244, -75.574], "BELLO":            [6.337, -75.559],
     "ITAGÜÍ":       [6.185, -75.600], "ENVIGADO":         [6.175, -75.587],
@@ -520,69 +519,166 @@ def call_claude(system_prompt, user_msg, history=None):
     except Exception as e:
         return f"⚠️ Error de conexión: {str(e)}"
 
+# ─── PREDICCIÓN ML (CORREGIDA) ────────────────────────────────────────────────
+
 def calc_prediction(dep, mun, delito, sexo, etario, año):
-    base = CRIME_DATA.get(dep, {"score": 3.0, "zona": "MEDIO-BAJO", "gravedad": "BAJO", "municipios": 10})
+    # ── Fallback sintético (siempre se calcula primero como respaldo) ─────────
+    base       = CRIME_DATA.get(dep, {"score": 3.0, "zona": "MEDIO-BAJO", "gravedad": "BAJO", "municipios": 10})
     año_factor = 1.05 if año >= 2024 else (1.0 if año >= 2020 else 0.9)
-    adjusted = base["score"] * DELIT_FACTOR.get(delito, 1.0) * año_factor
-    zonas = ["MUY BAJO","BAJO","MEDIO-BAJO","MEDIO-ALTO","ALTO","MUY ALTO"]
+    adjusted   = base["score"] * DELIT_FACTOR.get(delito, 1.0) * año_factor
+    zonas      = ["MUY BAJO","BAJO","MEDIO-BAJO","MEDIO-ALTO","ALTO","MUY ALTO"]
     gravedades = ["MÍNIMO","MUY BAJO","BAJO","MEDIO-BAJO","MEDIO-ALTO","ALTO","MUY ALTO","CRÍTICO"]
-    zona_idx = min(max(round(adjusted) - 1, 0), 5)
-    grav_idx = min(max(round(adjusted), 0), 7)
-    zona = zonas[zona_idx]
-    gravedad = gravedades[grav_idx]
-    victimas = round(adjusted * 18 + random.random() * 10)
-    used_pkl = False
+    zona_idx   = min(max(round(adjusted) - 1, 0), 5)
+    grav_idx   = min(max(round(adjusted),     0), 7)
+    zona       = zonas[zona_idx]
+    gravedad   = gravedades[grav_idx]
+    victimas   = round(adjusted * 18 + random.random() * 10)
+
+    used_pkl   = False
+    pkl_errors = []   # lista de mensajes de diagnóstico visibles en la UI
+
+    # ── COLUMNAS: ajusta este orden si tus modelos fueron entrenados distinto ──
+    FEATURE_COLS_ZONA  = ["DEPARTAMENTO", "MUNICIPIO", "DELITO", "SEXO", "GRUPO_ETARIO", "AÑO"]
+    FEATURE_COLS_GRAV  = ["DEPARTAMENTO", "MUNICIPIO", "DELITO", "SEXO", "GRUPO_ETARIO", "AÑO"]
+
+    # ── PREDICCIÓN ZONA con XGBoost ───────────────────────────────────────────
     try:
-        if MODELS.get("xgb_zona") and MODELS.get("encoders_zona") and MODELS.get("le_zona"):
-            enc = MODELS["encoders_zona"]
-            row = pd.DataFrame([{
-                "DEPARTAMENTO": dep, "MUNICIPIO": mun, "DELITO": delito,
-                "SEXO": sexo, "GRUPO_ETARIO": etario, "AÑO": año,
-            }])
-            for col in ["DEPARTAMENTO","MUNICIPIO","DELITO","SEXO","GRUPO_ETARIO"]:
-                if col in enc and col in row.columns:
-                    try:
-                        row[col] = enc[col].transform(row[col].astype(str))
-                    except Exception:
-                        row[col] = 0
-            zona_pred = MODELS["xgb_zona"].predict(row)[0]
-            try:
-                zona = MODELS["le_zona"].inverse_transform([zona_pred])[0]
-            except Exception:
-                zona = str(zona_pred)
-            used_pkl = True
-    except Exception:
-        pass
+        xgb_z = MODELS.get("xgb_zona")
+        enc_z = MODELS.get("encoders_zona")
+        le_z  = MODELS.get("le_zona")
+
+        if xgb_z is None:
+            raise ValueError("xgb_zona.pkl no cargado o no encontrado en el directorio")
+        if enc_z is None:
+            raise ValueError("encoders_zona.pkl no cargado o no encontrado en el directorio")
+        if le_z is None:
+            raise ValueError("le_target_zona.pkl no cargado o no encontrado en el directorio")
+
+        # Crear DataFrame con orden de columnas garantizado
+        row = pd.DataFrame([{
+            "DEPARTAMENTO": dep,
+            "MUNICIPIO":    mun,
+            "DELITO":       delito,
+            "SEXO":         sexo,
+            "GRUPO_ETARIO": etario,
+            "AÑO":          int(año),
+        }])[FEATURE_COLS_ZONA]
+
+        # Encoding de columnas categóricas con manejo de categorías desconocidas
+        for col in ["DEPARTAMENTO", "MUNICIPIO", "DELITO", "SEXO", "GRUPO_ETARIO"]:
+            if col not in enc_z:
+                raise ValueError(f"El encoder para la columna '{col}' no existe dentro de encoders_zona.pkl")
+            le_col = enc_z[col]
+            val    = str(row[col].iloc[0])
+            if val not in le_col.classes_:
+                # Usa la primera clase conocida como fallback y avisa
+                fallback = le_col.classes_[0]
+                pkl_errors.append(
+                    f"⚠️ Zona — '{val}' no fue visto en entrenamiento para {col}. "
+                    f"Usando fallback: '{fallback}'"
+                )
+                row[col] = le_col.transform([fallback])[0]
+            else:
+                row[col] = le_col.transform([val])[0]
+
+        # Asegurar tipo numérico en AÑO después del encoding
+        row["AÑO"] = int(año)
+
+        zona_pred_num = xgb_z.predict(row)[0]
+        zona          = le_z.inverse_transform([int(zona_pred_num)])[0]
+        used_pkl      = True
+
+    except Exception as e:
+        pkl_errors.append(f"❌ Predicción ZONA (XGBoost) falló: {e}")
+
+    # ── PREDICCIÓN GRAVEDAD con XGBoost ──────────────────────────────────────
     try:
-        if MODELS.get("xgb_gravedad") and MODELS.get("le_gravedad"):
-            row2 = pd.DataFrame([{
-                "DEPARTAMENTO": dep, "MUNICIPIO": mun, "DELITO": delito,
-                "SEXO": sexo, "GRUPO_ETARIO": etario, "AÑO": año,
-            }])
-            if MODELS.get("preprocessor_grav"):
-                row2 = MODELS["preprocessor_grav"].transform(row2)
-            elif MODELS.get("scaler_gravedad"):
-                row2 = MODELS["scaler_gravedad"].transform(row2)
-            grav_pred = MODELS["xgb_gravedad"].predict(row2)[0]
-            try:
-                gravedad = MODELS["le_gravedad"].inverse_transform([grav_pred])[0]
-            except Exception:
-                gravedad = str(grav_pred)
-            used_pkl = True
-    except Exception:
-        pass
+        xgb_g = MODELS.get("xgb_gravedad")
+        le_g  = MODELS.get("le_gravedad")
+        pre_g = MODELS.get("preprocessor_grav")
+        scl_g = MODELS.get("scaler_gravedad")
+
+        if xgb_g is None:
+            raise ValueError("xgb_gravedad.pkl no cargado o no encontrado en el directorio")
+        if le_g is None:
+            raise ValueError("le_target_gravedad.pkl no cargado o no encontrado en el directorio")
+
+        # Crear DataFrame con orden de columnas garantizado
+        row2 = pd.DataFrame([{
+            "DEPARTAMENTO": dep,
+            "MUNICIPIO":    mun,
+            "DELITO":       delito,
+            "SEXO":         sexo,
+            "GRUPO_ETARIO": etario,
+            "AÑO":          int(año),
+        }])[FEATURE_COLS_GRAV]
+
+        if pre_g is not None:
+            # Pipeline o ColumnTransformer: transforma strings directamente
+            row2_transformed = pre_g.transform(row2)
+
+        elif scl_g is not None:
+            # Solo scaler numérico: hay que encodear manualmente primero
+            enc_z2 = MODELS.get("encoders_zona")
+            if enc_z2 is not None:
+                for col in ["DEPARTAMENTO", "MUNICIPIO", "DELITO", "SEXO", "GRUPO_ETARIO"]:
+                    if col in enc_z2:
+                        le_col2 = enc_z2[col]
+                        val2    = str(row2[col].iloc[0])
+                        closest = val2 if val2 in le_col2.classes_ else le_col2.classes_[0]
+                        if val2 not in le_col2.classes_:
+                            pkl_errors.append(
+                                f"⚠️ Gravedad — '{val2}' no visto en entrenamiento para {col}. "
+                                f"Usando fallback: '{closest}'"
+                            )
+                        row2[col] = le_col2.transform([closest])[0]
+            row2["AÑO"]      = int(año)
+            row2_transformed = scl_g.transform(row2)
+
+        else:
+            # Sin preprocesador: XGBoost debe haber sido entrenado con enable_categorical=True
+            # Si no, fallará aquí con un error claro
+            pkl_errors.append(
+                "⚠️ Gravedad — No se encontró preprocessor_gravedad.pkl ni scaler_gravedad.pkl. "
+                "Se asume que xgb_gravedad acepta strings nativos (enable_categorical=True)."
+            )
+            row2_transformed = row2
+
+        grav_pred_num = xgb_g.predict(row2_transformed)[0]
+        gravedad      = le_g.inverse_transform([int(grav_pred_num)])[0]
+        used_pkl      = True
+
+    except Exception as e:
+        pkl_errors.append(f"❌ Predicción GRAVEDAD (XGBoost) falló: {e}")
+
+    # ── NOTA: lgbm_zona y pipe_lgbm_gravedad están cargados pero no se usan.
+    # Si quieres activarlos como ensemble, descomenta el bloque de abajo:
+    #
+    # try:
+    #     lgbm_z = MODELS.get("lgbm_zona")
+    #     if lgbm_z is not None and used_pkl:
+    #         zona_lgbm = lgbm_z.predict(row)[0]
+    #         zona_lgbm_label = le_z.inverse_transform([int(zona_lgbm)])[0]
+    #         # Ensemble simple: mayoría de votos entre xgb y lgbm
+    #         # zona = zona si xgb == lgbm, si no usa el de mayor confianza
+    # except Exception as e:
+    #     pkl_errors.append(f"⚠️ LGBM zona: {e}")
+
+    # ── Cálculos auxiliares ───────────────────────────────────────────────────
     probs_zona = {}
     for i, z in enumerate(zonas):
         dist = abs(i - zona_idx)
         probs_zona[z] = max(2, 100 - dist * 28 + (random.random() * 6 - 3))
-    total_z = sum(probs_zona.values())
+    total_z    = sum(probs_zona.values())
     probs_zona = {k: round(v / total_z * 100, 1) for k, v in probs_zona.items()}
+
     trend = []
     for y in [2019,2020,2021,2022,2023,2024,2025,2026,2027]:
-        yf = 1.05 if y >= 2024 else (1.0 if y >= 2020 else 0.9)
+        yf    = 1.05 if y >= 2024 else (1.0 if y >= 2020 else 0.9)
         noise = random.random() * 0.3 - 0.15
-        s = base["score"] * DELIT_FACTOR.get(delito, 1.0) * yf * (1 + (y - 2020) * 0.025) + noise
+        s     = base["score"] * DELIT_FACTOR.get(delito, 1.0) * yf * (1 + (y - 2020) * 0.025) + noise
         trend.append({"year": y, "score": round(min(max(s, 0.5), 6.0), 2), "projected": y >= 2025})
+
     comparativa = []
     for d in DELITOS:
         df = DELIT_FACTOR.get(d, 1.0)
@@ -590,37 +686,52 @@ def calc_prediction(dep, mun, delito, sexo, etario, año):
         zi = min(max(round(sc) - 1, 0), 5)
         comparativa.append({"label": d, "value": round(sc, 1), "risk": zonas[zi]})
     comparativa.sort(key=lambda x: x["value"], reverse=True)
-    months = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
-    seasonal = [0.85,0.8,0.9,0.95,1.0,1.05,1.1,1.15,1.0,0.95,1.1,1.3]
-    monthly = [{"month": m, "value": round(adjusted * seasonal[i] * (1 + random.random()*0.1-0.05), 2),
-                "cases": round(victimas/12 * seasonal[i] * (1+random.random()*0.2-0.1))}
-               for i, m in enumerate(months)]
-    return {"zona": zona, "gravedad": gravedad, "victimas": victimas, "probs_zona": probs_zona,
-            "trend": trend, "comparativa": comparativa, "score": round(adjusted, 1),
-            "zona_idx": zona_idx, "monthly": monthly, "used_pkl": used_pkl}
 
-# ── Datos de municipios (score sintético determinista) ────────────────────────
+    months   = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
+    seasonal = [0.85,0.8,0.9,0.95,1.0,1.05,1.1,1.15,1.0,0.95,1.1,1.3]
+    monthly  = [
+        {"month": m,
+         "value": round(adjusted * seasonal[i] * (1 + random.random()*0.1-0.05), 2),
+         "cases": round(victimas/12 * seasonal[i] * (1+random.random()*0.2-0.1))}
+        for i, m in enumerate(months)
+    ]
+
+    return {
+        "zona":        zona,
+        "gravedad":    gravedad,
+        "victimas":    victimas,
+        "probs_zona":  probs_zona,
+        "trend":       trend,
+        "comparativa": comparativa,
+        "score":       round(adjusted, 1),
+        "zona_idx":    zona_idx,
+        "monthly":     monthly,
+        "used_pkl":    used_pkl,
+        "pkl_errors":  pkl_errors,   # ← NUEVO: errores/advertencias visibles
+    }
+
+# ── Datos de municipios ───────────────────────────────────────────────────────
 @st.cache_data
 def build_municipio_data():
-    data = {}
+    data  = {}
     zonas = ["MUY BAJO","BAJO","MEDIO-BAJO","MEDIO-ALTO","ALTO","MUY ALTO"]
     for dep_name, dep_info in CRIME_DATA.items():
-        muns = get_municipios(dep_name)
-        base = dep_info["score"]
+        muns     = get_municipios(dep_name)
+        base     = dep_info["score"]
         mun_list = []
         for mun in muns:
-            seed = int(hashlib.md5(f"{dep_name}{mun}".encode()).hexdigest(), 16) % 1000
+            seed      = int(hashlib.md5(f"{dep_name}{mun}".encode()).hexdigest(), 16) % 1000
             variation = (seed / 1000.0 - 0.5) * 1.4
-            score = round(min(max(base + variation, 0.8), 5.9), 2)
-            zona_idx = min(max(round(score) - 1, 0), 5)
-            zona = zonas[zona_idx]
+            score     = round(min(max(base + variation, 0.8), 5.9), 2)
+            zona_idx  = min(max(round(score) - 1, 0), 5)
+            zona      = zonas[zona_idx]
             mun_list.append({"name": mun, "score": score, "zona": zona, "dep": dep_name})
         data[dep_name] = mun_list
     return data
 
 MUNICIPIO_DATA = build_municipio_data()
 
-# ── GeoJSON de Colombia ───────────────────────────────────────────────────────
+# ── GeoJSON Colombia ──────────────────────────────────────────────────────────
 COLOMBIA_GEO = {"type":"FeatureCollection","features":[
     {"type":"Feature","properties":{"DPTO":"AMAZONAS"},"geometry":{"type":"Polygon","coordinates":[[[-73.85,-4.2],[-70.1,-4.2],[-70.1,-2.2],[-69.95,-1.75],[-70.1,-0.15],[-71.0,-0.25],[-72.0,-0.4],[-73.5,-1.5],[-73.85,-2.5],[-73.85,-4.2]]]}},
     {"type":"Feature","properties":{"DPTO":"ANTIOQUIA"},"geometry":{"type":"Polygon","coordinates":[[[-75.9,8.7],[-75.2,8.95],[-74.5,8.9],[-73.8,8.35],[-73.0,7.5],[-73.05,6.9],[-73.5,6.4],[-73.8,6.0],[-74.5,5.8],[-75.2,5.75],[-76.0,5.9],[-76.5,6.3],[-76.9,6.9],[-76.8,7.5],[-76.5,7.9],[-76.2,8.3],[-75.9,8.7]]]}},
@@ -868,7 +979,7 @@ elif "📊" in page:
                 st.session_state.pop("interp_result", None)
 
         result = st.session_state.get("pred_result")
-        form = st.session_state.get("pred_form", {})
+        form   = st.session_state.get("pred_form", {})
 
         if result:
             st.markdown(f"""
@@ -909,12 +1020,27 @@ elif "📊" in page:
                         <div style="font-size:10px;color:#6B7280;margin-top:4px;">{extra}</div>
                     </div>""", unsafe_allow_html=True)
 
-            pkl_badge = ('✅ Modelos PKL reales activos' if result.get("used_pkl") else '⚙️ Modo simulación (PKL no cargados)')
-            pkl_color = "#059669" if result.get("used_pkl") else "#D97706"
-            pkl_bg = "#ECFDF5" if result.get("used_pkl") else "#FFFBEB"
-            st.markdown(f'''<div style="background:{pkl_bg};border:1px solid {pkl_color}40;border-radius:12px;
-                padding:10px 16px;margin:12px 0;display:inline-block;font-size:12px;font-weight:700;color:{pkl_color};">
-                {pkl_badge}</div>''', unsafe_allow_html=True)
+            # ── Badge PKL con diagnóstico detallado (CORREGIDO) ───────────────
+            if result.get("used_pkl"):
+                st.markdown('''<div style="background:#ECFDF5;border:1px solid #6EE7B740;border-radius:12px;
+                    padding:10px 16px;margin:12px 0;display:inline-block;font-size:12px;font-weight:700;color:#059669;">
+                    ✅ Modelos PKL reales activos — predicciones desde archivos entrenados</div>''',
+                    unsafe_allow_html=True)
+            else:
+                st.markdown('''<div style="background:#FFFBEB;border:1px solid #FCD34D40;border-radius:12px;
+                    padding:10px 16px;margin:12px 0;display:inline-block;font-size:12px;font-weight:700;color:#D97706;">
+                    ⚙️ Modo simulación — los modelos PKL no pudieron cargarse o tuvieron errores</div>''',
+                    unsafe_allow_html=True)
+
+            if result.get("pkl_errors"):
+                with st.expander(f"🔍 Diagnóstico PKL — {len(result['pkl_errors'])} mensaje(s)", expanded=not result.get("used_pkl")):
+                    for err in result["pkl_errors"]:
+                        color_err = "#DC2626" if err.startswith("❌") else "#D97706"
+                        st.markdown(
+                            f'<div style="font-size:12px;color:{color_err};padding:5px 0;'
+                            f'font-family:monospace;border-bottom:1px solid #EDE9FE;">{err}</div>',
+                            unsafe_allow_html=True
+                        )
 
             st.markdown("<br>", unsafe_allow_html=True)
             tab1, tab2, tab3, tab4 = st.tabs(["📈 Tendencia Histórica", "🎯 Distribución de Probabilidad", "📅 Variación Mensual", "🕸️ Radar de Riesgo"])
@@ -922,10 +1048,8 @@ elif "📊" in page:
             with tab1:
                 solid_x = [t["year"] for t in result["trend"] if not t["projected"]]
                 solid_y = [t["score"] for t in result["trend"] if not t["projected"]]
-                proj_x_start = solid_x[-1]
-                proj_y_start = solid_y[-1]
-                proj_x = [proj_x_start] + [t["year"] for t in result["trend"] if t["projected"]]
-                proj_y = [proj_y_start] + [t["score"] for t in result["trend"] if t["projected"]]
+                proj_x  = [solid_x[-1]] + [t["year"] for t in result["trend"] if t["projected"]]
+                proj_y  = [solid_y[-1]] + [t["score"] for t in result["trend"] if t["projected"]]
                 colors_pts = [get_risk_color(t["score"]) for t in result["trend"]]
                 fig = go.Figure()
                 fig.add_shape(type="rect", x0=2019, x1=2027, y0=4, y1=6, fillcolor="#FEE2E2", opacity=0.25, line_width=0)
@@ -985,7 +1109,7 @@ elif "📊" in page:
                     result["trend"][-1]["score"] / 6.0,
                     score_norm * 1.05,
                 ]
-                radar_vals = [round(min(v, 1.0), 2) for v in radar_vals]
+                radar_vals     = [round(min(v, 1.0), 2) for v in radar_vals]
                 radar_vals_pct = [round(v * 100) for v in radar_vals]
                 fig4 = go.Figure()
                 fig4.add_trace(go.Scatterpolar(r=radar_vals_pct, theta=radar_cats, fill='toself',
@@ -1004,9 +1128,9 @@ elif "📊" in page:
             st.markdown(f'<div style="font-size:14px;font-weight:800;color:#1E1B4B;margin-bottom:4px;">📊 Comparativa por Tipo de Delito — {form.get("dep",dep)}</div>', unsafe_allow_html=True)
             max_v = result["comparativa"][0]["value"] if result["comparativa"] else 1
             for item in result["comparativa"]:
-                cfg = RISK_LEVELS.get(item["risk"], {"color": "#888"})
+                cfg    = RISK_LEVELS.get(item["risk"], {"color": "#888"})
                 is_sel = item["label"] == form.get("delito", delito)
-                bg = cfg["color"] + "12" if is_sel else "#FAFAFA"
+                bg     = cfg["color"] + "12" if is_sel else "#FAFAFA"
                 border = cfg["color"] + "50" if is_sel else "#EDE9FE"
                 marker = " ← seleccionado" if is_sel else ""
                 st.markdown(f"""
@@ -1098,7 +1222,6 @@ elif "🗺️" in page:
     </div>
     """, unsafe_allow_html=True)
 
-    # KPI cards
     c1, c2, c3, c4 = st.columns(4)
     for col, label, count, color, bg in [
         (c1, "Crítico / Muy Alto", sum(1 for d in CRIME_DATA.values() if d["score"] >= 4.0), "#DC2626", "linear-gradient(135deg,#FEF2F2,#FEE2E2)"),
@@ -1114,7 +1237,6 @@ elif "🗺️" in page:
                 <div style="font-size:10px;color:#6B7280;margin-top:3px;">{label}</div>
             </div>""", unsafe_allow_html=True)
 
-    # Controles
     ctrl1, ctrl2, ctrl3 = st.columns([2, 2, 2])
     with ctrl1:
         filter_zone = st.selectbox("🔍 Filtrar por nivel de riesgo:", ["TODOS","ALTO","MEDIO-ALTO","MEDIO-BAJO","BAJO"], key="map_filter")
@@ -1144,7 +1266,6 @@ elif "🗺️" in page:
 
     col_map, col_detail = st.columns([2, 1])
 
-    # ── Función leyenda ────────────────────────────────────────────────────────
     def _add_legend(m):
         legend_html = """
         <div style="position:fixed;bottom:20px;left:20px;z-index:1000;background:white;
@@ -1160,7 +1281,6 @@ elif "🗺️" in page:
         </div>"""
         m.get_root().html.add_child(folium.Element(legend_html))
 
-    # ── Mapa por departamentos ─────────────────────────────────────────────────
     @st.cache_data
     def build_folium_map_dep(filter_z, sel_dep):
         m = folium.Map(location=[4.5, -74.0], zoom_start=5, tiles="CartoDB positron", scrollWheelZoom=True)
@@ -1171,13 +1291,13 @@ elif "🗺️" in page:
                 continue
             if filter_z != "TODOS" and get_risk_zone_label(dep_data["score"]) != filter_z:
                 continue
-            score = dep_data["score"]
-            color = get_risk_color(score)
-            is_sel = dep_name == sel_dep
-            pct = int(score / 6 * 100)
-            zona = dep_data["zona"]
-            gravedad = dep_data["gravedad"]
-            muns = dep_data["municipios"]
+            score   = dep_data["score"]
+            color   = get_risk_color(score)
+            is_sel  = dep_name == sel_dep
+            pct     = int(score / 6 * 100)
+            zona    = dep_data["zona"]
+            gravedad= dep_data["gravedad"]
+            muns    = dep_data["municipios"]
             tooltip_html = f"""
             <div style="font-family:'Segoe UI',sans-serif;min-width:200px;padding:2px;">
                 <div style="font-weight:800;font-size:14px;color:#1E1B4B;border-bottom:2px solid {color};padding-bottom:4px;margin-bottom:8px;">{dep_name}</div>
@@ -1205,20 +1325,20 @@ elif "🗺️" in page:
                     <div style="font-size:12px;"><b style="color:#374151;">Municipios:</b> {muns}</div>
                 </div>
             </div>"""
-            weight = 3 if is_sel else 1.5
-            fill_op = 0.88 if is_sel else 0.72
-            stroke_color = "#1E1B4B" if is_sel else "#ffffff"
+            weight   = 3 if is_sel else 1.5
+            fill_op  = 0.88 if is_sel else 0.72
+            stroke_c = "#1E1B4B" if is_sel else "#ffffff"
             folium.GeoJson(feature,
-                style_function=lambda x, c=color, w=weight, fo=fill_op, sc=stroke_color: {
+                style_function=lambda x, c=color, w=weight, fo=fill_op, sc=stroke_c: {
                     "fillColor": c, "color": sc, "weight": w, "fillOpacity": fo},
                 tooltip=folium.Tooltip(tooltip_html, sticky=True),
                 popup=folium.Popup(popup_html, max_width=240),
                 highlight_function=lambda x, c=color: {"fillColor": c, "fillOpacity": 0.95, "weight": 3, "color": "#1E1B4B"},
             ).add_to(m)
-            coords = feature["geometry"]["coordinates"][0]
-            lons = [p[0] for p in coords]; lats = [p[1] for p in coords]
-            cx = sum(lons)/len(lons); cy = sum(lats)/len(lats)
-            short_name = dep_name.split()[0][:8] if len(dep_name) > 12 else dep_name[:10]
+            coords    = feature["geometry"]["coordinates"][0]
+            lons      = [p[0] for p in coords]; lats = [p[1] for p in coords]
+            cx        = sum(lons)/len(lons); cy = sum(lats)/len(lats)
+            short_name= dep_name.split()[0][:8] if len(dep_name) > 12 else dep_name[:10]
             folium.Marker(location=[cy, cx],
                 icon=folium.DivIcon(
                     html=f'<div style="font-size:8px;font-weight:800;color:white;text-shadow:0 1px 3px rgba(0,0,0,0.7);white-space:nowrap;text-align:center;line-height:1.2;"><div>{short_name}</div><div style="font-size:9px;">{score:.1f}</div></div>',
@@ -1227,48 +1347,40 @@ elif "🗺️" in page:
         _add_legend(m)
         return m._repr_html_()
 
-    # ── Mapa por municipios ────────────────────────────────────────────────────
     @st.cache_data
     def build_folium_map_mun(dep_name_sel, mun_data_json):
-        mun_data = json.loads(mun_data_json)
-        dep_info = CRIME_DATA.get(dep_name_sel, {})
-        dep_feature = next((f for f in COLOMBIA_GEO["features"] if f["properties"]["DPTO"] == dep_name_sel), None)
+        mun_data   = json.loads(mun_data_json)
+        dep_info   = CRIME_DATA.get(dep_name_sel, {})
+        dep_feature= next((f for f in COLOMBIA_GEO["features"] if f["properties"]["DPTO"] == dep_name_sel), None)
         if dep_feature:
-            coords = dep_feature["geometry"]["coordinates"][0]
-            center_lat = sum(p[1] for p in coords) / len(coords)
-            center_lon = sum(p[0] for p in coords) / len(coords)
+            coords      = dep_feature["geometry"]["coordinates"][0]
+            center_lat  = sum(p[1] for p in coords) / len(coords)
+            center_lon  = sum(p[0] for p in coords) / len(coords)
         else:
             center_lat, center_lon = 4.5, -74.0
-
         m = folium.Map(location=[center_lat, center_lon], zoom_start=8, tiles="CartoDB positron", scrollWheelZoom=True)
-
         if dep_feature:
             folium.GeoJson(dep_feature,
                 style_function=lambda x, c=get_risk_color(dep_info.get("score", 3.0)): {
                     "fillColor": c, "color": "#1E1B4B", "weight": 2, "fillOpacity": 0.08},
             ).add_to(m)
-
         for mun in mun_data:
             mun_name = mun["name"]
-            score = mun["score"]
-            zona = mun["zona"]
-            color = get_risk_color(score)
-            pct = int(score / 6 * 100)
-
+            score    = mun["score"]
+            zona     = mun["zona"]
+            color    = get_risk_color(score)
+            pct      = int(score / 6 * 100)
             if mun_name in MUN_COORDS:
                 lat, lon = MUN_COORDS[mun_name]
             else:
-                seed = int(hashlib.md5(f"{dep_name_sel}{mun_name}".encode()).hexdigest(), 16)
+                seed    = int(hashlib.md5(f"{dep_name_sel}{mun_name}".encode()).hexdigest(), 16)
                 lat_off = ((seed % 1000) / 1000.0 - 0.5) * 1.5
                 lon_off = (((seed // 1000) % 1000) / 1000.0 - 0.5) * 1.5
-                lat = center_lat + lat_off
-                lon = center_lon + lon_off
-
+                lat     = center_lat + lat_off
+                lon     = center_lon + lon_off
             tooltip_html = f"""
             <div style="font-family:'Segoe UI',sans-serif;min-width:180px;padding:2px;">
-                <div style="font-weight:800;font-size:13px;color:#1E1B4B;border-bottom:2px solid {color};padding-bottom:4px;margin-bottom:8px;">
-                    📍 {mun_name}
-                </div>
+                <div style="font-weight:800;font-size:13px;color:#1E1B4B;border-bottom:2px solid {color};padding-bottom:4px;margin-bottom:8px;">📍 {mun_name}</div>
                 <div style="font-size:10px;color:#6B7280;margin-bottom:4px;">{dep_name_sel}</div>
                 <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
                     <span style="font-size:20px;font-weight:900;color:{color};">{score:.1f}</span>
@@ -1279,42 +1391,29 @@ elif "🗺️" in page:
                     <div style="width:{pct}%;height:100%;background:{color};border-radius:4px;"></div>
                 </div>
             </div>"""
-
             popup_html = f"""
             <div style="font-family:'Segoe UI',sans-serif;width:200px;">
-                <div style="background:{color};color:white;padding:8px 12px;border-radius:8px 8px 0 0;font-weight:800;font-size:13px;">
-                    📍 {mun_name}
-                </div>
+                <div style="background:{color};color:white;padding:8px 12px;border-radius:8px 8px 0 0;font-weight:800;font-size:13px;">📍 {mun_name}</div>
                 <div style="padding:10px 12px;border:1px solid #eee;border-top:none;border-radius:0 0 8px 8px;">
                     <div style="font-size:10px;color:#6B7280;margin-bottom:6px;">{dep_name_sel}</div>
-                    <div style="font-size:26px;font-weight:900;color:{color};margin-bottom:4px;">{score:.1f}
-                        <span style="font-size:12px;color:#9CA3AF;">/ 6.0</span>
-                    </div>
+                    <div style="font-size:26px;font-weight:900;color:{color};margin-bottom:4px;">{score:.1f}<span style="font-size:12px;color:#9CA3AF;">/ 6.0</span></div>
                     <div style="background:#F3F4F6;border-radius:4px;height:7px;margin-bottom:8px;">
                         <div style="width:{pct}%;height:100%;background:{color};border-radius:4px;"></div>
                     </div>
                     <div style="font-size:11px;font-weight:700;color:{color};">Zona: {zona}</div>
                 </div>
             </div>"""
-
             radius = 8 + score * 3
-            folium.CircleMarker(
-                location=[lat, lon], radius=radius,
-                color="#1E1B4B", weight=1.5,
-                fill=True, fill_color=color, fill_opacity=0.85,
+            folium.CircleMarker(location=[lat, lon], radius=radius,
+                color="#1E1B4B", weight=1.5, fill=True, fill_color=color, fill_opacity=0.85,
                 tooltip=folium.Tooltip(tooltip_html, sticky=True),
                 popup=folium.Popup(popup_html, max_width=220),
             ).add_to(m)
-
             folium.Marker(location=[lat, lon],
                 icon=folium.DivIcon(
-                    html=f'<div style="font-size:7px;font-weight:800;color:#1E1B4B;'
-                         f'text-shadow:0 0 3px white,0 0 3px white;white-space:nowrap;'
-                         f'text-align:center;margin-top:{int(radius)+6}px;">'
-                         f'{mun_name[:12]}</div>',
+                    html=f'<div style="font-size:7px;font-weight:800;color:#1E1B4B;text-shadow:0 0 3px white,0 0 3px white;white-space:nowrap;text-align:center;margin-top:{int(radius)+6}px;">{mun_name[:12]}</div>',
                     icon_size=(90, 20), icon_anchor=(45, 0)),
             ).add_to(m)
-
         _add_legend(m)
         return m._repr_html_()
 
@@ -1325,16 +1424,15 @@ elif "🗺️" in page:
         if map_view == "Por Municipio":
             mun_data_list = MUNICIPIO_DATA.get(dep_muni_sel, [])
             mun_data_json = json.dumps(mun_data_list)
-            map_html = build_folium_map_mun(dep_muni_sel, mun_data_json)
+            map_html      = build_folium_map_mun(dep_muni_sel, mun_data_json)
             components.html(map_html, height=540, scrolling=False)
             st.markdown(f'<div style="font-size:11px;color:#6B7280;text-align:center;margin-top:4px;">🖱️ Zoom · Clic en círculo para detalles · Tamaño proporcional al score · Depto: <strong>{dep_muni_sel}</strong></div>', unsafe_allow_html=True)
         else:
             sel_dep_map = st.session_state.get("selected_dep", "")
-            map_html = build_folium_map_dep(filter_zone, sel_dep_map)
+            map_html    = build_folium_map_dep(filter_zone, sel_dep_map)
             components.html(map_html, height=540, scrolling=False)
             st.markdown('<div style="font-size:11px;color:#6B7280;text-align:center;margin-top:4px;">🖱️ Zoom con scroll · Clic en departamento para detalles · Pasa cursor para info rápida</div>', unsafe_allow_html=True)
 
-        # Leyenda
         st.markdown("""
         <div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center;margin:10px 0 4px;padding:8px 12px;
             background:#F8FAFF;border-radius:12px;border:1px solid #EDE9FE;">
@@ -1347,15 +1445,14 @@ elif "🗺️" in page:
         </div>
         """, unsafe_allow_html=True)
 
-        # Ranking / botones
         if map_view == "Por Municipio":
             mun_data_list = MUNICIPIO_DATA.get(dep_muni_sel, [])
-            mun_sorted = sorted(mun_data_list, key=lambda x: x["score"], reverse=True)
+            mun_sorted    = sorted(mun_data_list, key=lambda x: x["score"], reverse=True)
             st.markdown(f'<div style="font-size:13px;font-weight:700;color:#1E1B4B;margin:18px 0 12px;">📊 Ranking de Municipios — {dep_muni_sel}</div>', unsafe_allow_html=True)
             max_mun_score = mun_sorted[0]["score"] if mun_sorted else 1
             for i, mun in enumerate(mun_sorted):
                 color = get_risk_color(mun["score"])
-                pct = mun["score"] / max_mun_score * 100
+                pct   = mun["score"] / max_mun_score * 100
                 num_color = "#DC2626" if i < 3 else "#6B7280"
                 st.markdown(f"""<div style="margin-bottom:10px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
@@ -1386,8 +1483,8 @@ elif "🗺️" in page:
 
             st.markdown('<div style="font-size:13px;font-weight:700;color:#1E1B4B;margin:18px 0 12px;">🏆 Top 12 Departamentos por Score de Riesgo</div>', unsafe_allow_html=True)
             for i, d in enumerate(sorted_deps[:12]):
-                color = get_risk_color(d["score"])
-                pct = d["score"] / 6 * 100
+                color     = get_risk_color(d["score"])
+                pct       = d["score"] / 6 * 100
                 num_color = "#DC2626" if i < 3 else "#6B7280"
                 st.markdown(f"""<div style="margin-bottom:10px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
@@ -1403,11 +1500,10 @@ elif "🗺️" in page:
 
     with col_detail:
         if map_view == "Por Municipio":
-            mun_data_list = MUNICIPIO_DATA.get(dep_muni_sel, [])
-            mun_sorted_d = sorted(mun_data_list, key=lambda x: x["score"], reverse=True)
-            dep_info = CRIME_DATA.get(dep_muni_sel, {})
-            dep_color = get_risk_color(dep_info.get("score", 3.0))
-
+            mun_data_list  = MUNICIPIO_DATA.get(dep_muni_sel, [])
+            mun_sorted_d   = sorted(mun_data_list, key=lambda x: x["score"], reverse=True)
+            dep_info       = CRIME_DATA.get(dep_muni_sel, {})
+            dep_color      = get_risk_color(dep_info.get("score", 3.0))
             st.markdown(f"""<div class="sh-card">
                 <div style="margin-bottom:14px;">
                     <div style="font-size:19px;font-weight:900;color:#1E1B4B;">{dep_muni_sel}</div>
@@ -1428,7 +1524,6 @@ elif "🗺️" in page:
                 </div>
                 <div style="font-size:12px;font-weight:700;color:#1E1B4B;margin-bottom:10px;">🔴 Top 3 Municipios más críticos</div>
             """, unsafe_allow_html=True)
-
             for mun in mun_sorted_d[:3]:
                 mcolor = get_risk_color(mun["score"])
                 st.markdown(f"""<div style="display:flex;justify-content:space-between;align-items:center;
@@ -1440,7 +1535,6 @@ elif "🗺️" in page:
                         {risk_badge(mun['zona'], small=True)}
                     </div>
                 </div>""", unsafe_allow_html=True)
-
             st.markdown('<div style="font-size:12px;font-weight:700;color:#1E1B4B;margin:14px 0 8px;">✅ Top 3 Municipios más seguros</div>', unsafe_allow_html=True)
             for mun in mun_sorted_d[-3:][::-1]:
                 mcolor = get_risk_color(mun["score"])
@@ -1453,28 +1547,25 @@ elif "🗺️" in page:
                         {risk_badge(mun['zona'], small=True)}
                     </div>
                 </div>""", unsafe_allow_html=True)
-
             if st.button(f"🤖 Análisis IA municipios de {dep_muni_sel}", key="ai_mun_btn", use_container_width=True, type="primary"):
                 with st.spinner("Analizando con IA..."):
-                    top_muns = ", ".join([f"{m['name']} ({m['score']:.1f})" for m in mun_sorted_d[:3]])
+                    top_muns  = ", ".join([f"{m['name']} ({m['score']:.1f})" for m in mun_sorted_d[:3]])
                     safe_muns = ", ".join([f"{m['name']} ({m['score']:.1f})" for m in mun_sorted_d[-3:][::-1]])
-                    ai_mun = call_claude(
-                        "Eres experto en seguridad pública colombiana. Análisis breve (máx 130 palabras) con bullets y emojis sobre distribución de riesgo entre municipios de un departamento. Menciona factores que explican la diferencia de riesgo entre municipios.",
+                    ai_mun    = call_claude(
+                        "Eres experto en seguridad pública colombiana. Análisis breve (máx 130 palabras) con bullets y emojis sobre distribución de riesgo entre municipios de un departamento.",
                         f"Analiza distribución de riesgo en {dep_muni_sel}. Score depto: {dep_info.get('score',3.0):.1f}/6.0. "
                         f"Municipios más críticos: {top_muns}. Más seguros: {safe_muns}. Total: {len(mun_data_list)} municipios."
                     )
                     st.session_state[f"ai_mun_{dep_muni_sel}"] = ai_mun
-
             ai_mun_r = st.session_state.get(f"ai_mun_{dep_muni_sel}", "")
             if ai_mun_r:
                 st.markdown(f"""<div style="background:linear-gradient(135deg,#F5F3FF,#EDE9FE);border-radius:16px;padding:14px;
                     border:1px solid #C4B5FD;font-size:12px;color:#1E1B4B;line-height:1.75;white-space:pre-wrap;">{ai_mun_r}</div>""",
                     unsafe_allow_html=True)
-
         else:
             sel_name = st.session_state.get("selected_dep")
             if sel_name and sel_name in CRIME_DATA:
-                sel = {"name": sel_name, **CRIME_DATA[sel_name]}
+                sel   = {"name": sel_name, **CRIME_DATA[sel_name]}
                 color = get_risk_color(sel["score"])
                 st.markdown(f"""<div class="sh-card">
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">
@@ -1502,12 +1593,11 @@ elif "🗺️" in page:
                     </div>
                     <div style="font-size:12px;font-weight:700;color:#1E1B4B;margin-bottom:10px;">⚖️ Riesgo por tipo de delito</div>
                 """, unsafe_allow_html=True)
-
                 zonas_list = ["MUY BAJO","BAJO","MEDIO-BAJO","MEDIO-ALTO","ALTO","MUY ALTO"]
                 for d in DELITOS:
                     fac = DELIT_FACTOR.get(d, 1.0)
-                    sc = sel["score"] * fac
-                    z = zonas_list[min(max(round(sc) - 1, 0), 5)]
+                    sc  = sel["score"] * fac
+                    z   = zonas_list[min(max(round(sc) - 1, 0), 5)]
                     cfg = RISK_LEVELS.get(z, {"color": "#888"})
                     st.markdown(f"""<div style="display:flex;justify-content:space-between;align-items:center;
                         padding:7px 0;border-bottom:1px solid #EDE9FE;">
@@ -1517,7 +1607,6 @@ elif "🗺️" in page:
                             {risk_badge(z, small=True)}
                         </div>
                     </div>""", unsafe_allow_html=True)
-
                 st.markdown('<div style="font-size:12px;font-weight:700;color:#1E1B4B;margin:14px 0 8px;">🕐 Riesgo por Horario</div>', unsafe_allow_html=True)
                 h_risks = [("Madrugada (0–6h)","BAJO"),("Mañana (6–12h)","MUY BAJO"),
                            ("Tarde (12–18h)","MEDIO-BAJO"),("Noche (18–24h)","MUY ALTO" if sel["score"]>=4.0 else "ALTO" if sel["score"]>=3.0 else "MEDIO-ALTO")]
@@ -1527,21 +1616,18 @@ elif "🗺️" in page:
                         <span style="font-size:11px;color:#1E1B4B;">{h_label}</span>
                         {risk_badge(h_risk, small=True)}
                     </div>""", unsafe_allow_html=True)
-
                 if st.button(f"🤖 Análisis IA completo de {sel_name}", key="ai_map_btn", use_container_width=True, type="primary"):
                     with st.spinner("Analizando con IA..."):
                         ai_text = call_claude(
-                            "Eres experto en seguridad pública colombiana. Análisis breve (máx 130 palabras) con bullets y emojis: contexto del departamento, amenazas principales para mujeres, horarios de mayor riesgo, recomendación operativa clave.",
+                            "Eres experto en seguridad pública colombiana. Análisis breve (máx 130 palabras) con bullets y emojis.",
                             f"Analiza seguridad para mujeres en {sel_name}, Colombia. Score: {sel['score']}/6.0, zona: {sel['zona']}, gravedad: {sel['gravedad']}."
                         )
                         st.session_state[f"ai_map_{sel_name}"] = ai_text
-
                 ai_result = st.session_state.get(f"ai_map_{sel_name}", "")
                 if ai_result:
                     st.markdown(f"""<div style="background:linear-gradient(135deg,#F5F3FF,#EDE9FE);border-radius:16px;padding:16px;
                         border:1px solid #C4B5FD;font-size:12px;color:#1E1B4B;line-height:1.75;white-space:pre-wrap;">{ai_result}</div>""",
                         unsafe_allow_html=True)
-
                 if sel["score"] >= 4.0:
                     rec_color, rec_bg, rec_text = "#991B1B","#FEF2F2","🚨 Zona de alto riesgo. Refuerzo urgente de patrullaje y coordinación con Fiscalía."
                 elif sel["score"] >= 3.0:
@@ -1557,7 +1643,7 @@ elif "🗺️" in page:
                     border:2px dashed #C4B5FD;padding:48px 24px;text-align:center;">
                     <div style="font-size:48px;margin-bottom:14px;">🗺️</div>
                     <div style="font-size:15px;font-weight:700;color:#5B21B6;margin-bottom:6px;">Selecciona un departamento</div>
-                    <div style="font-size:12px;color:#A78BFA;line-height:1.7;">Haz clic en cualquier departamento de la lista para ver el análisis detallado de riesgo y obtener interpretación con IA.</div>
+                    <div style="font-size:12px;color:#A78BFA;line-height:1.7;">Haz clic en cualquier departamento de la lista para ver el análisis detallado.</div>
                 </div>""", unsafe_allow_html=True)
 
 # ── VIAJE SEGURO ──────────────────────────────────────────────────────────────
@@ -1620,14 +1706,14 @@ elif "✈️" in page:
                 st.markdown(f'<div style="display:flex;flex-wrap:wrap;gap:4px;">{chips}</div>', unsafe_allow_html=True)
             with col_b:
                 st.markdown('<div style="font-weight:800;font-size:13px;color:#1E1B4B;margin-bottom:14px;">⚠️ Riesgo por Tipo de Delito</div>', unsafe_allow_html=True)
-                zonas_l = ["MUY BAJO","BAJO","MEDIO-BAJO","MEDIO-ALTO","ALTO","MUY ALTO"]
+                zonas_l       = ["MUY BAJO","BAJO","MEDIO-BAJO","MEDIO-ALTO","ALTO","MUY ALTO"]
                 delito_scores = sorted(
                     [{"d": d, "sc": round(vr["data"]["score"] * DELIT_FACTOR.get(d, 1.0), 1)} for d in DELITOS],
                     key=lambda x: x["sc"], reverse=True
                 )
                 max_sc = delito_scores[0]["sc"] if delito_scores else 1
                 for item in delito_scores:
-                    z = zonas_l[min(max(round(item["sc"]) - 1, 0), 5)]
+                    z   = zonas_l[min(max(round(item["sc"]) - 1, 0), 5)]
                     cfg = RISK_LEVELS.get(z, {"color": "#888"})
                     st.markdown(f"""<div style="margin-bottom:10px;">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
@@ -1643,7 +1729,7 @@ elif "✈️" in page:
             if "viaje_tips" not in st.session_state:
                 with st.spinner("✨ Preparando consejos personalizados..."):
                     tips = call_claude(
-                        "Eres experta en seguridad para mujeres viajeras en Colombia. Responde en español con bullets y emojis. Secciones: 🛡️ Recomendaciones de seguridad, 🏠 Mejores zonas para alojarse, 🕐 Horarios seguros, 🚗 Transporte recomendado, 📞 Números de emergencia locales. Máx 220 palabras. Sé específica para el departamento.",
+                        "Eres experta en seguridad para mujeres viajeras en Colombia. Responde en español con bullets y emojis. Secciones: 🛡️ Recomendaciones de seguridad, 🏠 Mejores zonas para alojarse, 🕐 Horarios seguros, 🚗 Transporte recomendado, 📞 Números de emergencia locales. Máx 220 palabras.",
                         f"Consejos para mujer viajando a {vr['dep']}, Colombia. Score de riesgo: {score:.1f}/6.0 (zona: {vr['data']['zona']})."
                     )
                     st.session_state["viaje_tips"] = tips
@@ -1678,9 +1764,7 @@ elif "🚨" in page:
         with cols[i % 4]:
             st.markdown(f"""<a href="{href}" style="text-decoration:none;">
             <div style="background:#fff;border:2px solid {color}22;border-radius:22px;padding:24px 18px;
-                text-align:center;cursor:pointer;min-height:136px;margin-bottom:16px;box-shadow:0 3px 16px rgba(0,0,0,0.06);"
-                onmouseover="this.style.borderColor='{color}';this.style.transform='translateY(-2px)';"
-                onmouseout="this.style.borderColor='{color}22';this.style.transform='translateY(0)';">
+                text-align:center;cursor:pointer;min-height:136px;margin-bottom:16px;box-shadow:0 3px 16px rgba(0,0,0,0.06);">
                 <div style="font-size:32px;margin-bottom:10px;">{icon}</div>
                 <div style="font-weight:800;font-size:13px;color:#1E1B4B;margin-bottom:6px;">{label}</div>
                 <div style="font-size:11px;font-weight:700;color:{color};background:{color}12;
@@ -1745,8 +1829,8 @@ elif "📋" in page:
     """, unsafe_allow_html=True)
 
     if not st.session_state.get("denuncia_sent"):
-        step = st.session_state.get("denuncia_step", 1)
-        steps = ["Clasificación", "Descripción", "Opciones y Envío"]
+        step   = st.session_state.get("denuncia_step", 1)
+        steps  = ["Clasificación", "Descripción", "Opciones y Envío"]
         step_html = '<div style="display:flex;align-items:center;gap:0;margin-bottom:24px;">'
         for si, sl in enumerate(steps, 1):
             if si < step:
@@ -1766,9 +1850,9 @@ elif "📋" in page:
 
         col_form, col_info = st.columns([2, 1])
         with col_form:
-            anon = st.toggle("🔒 Denuncia Anónima (Recomendado)", value=st.session_state.get("d_anon", True), key="d_anon_toggle")
+            anon   = st.toggle("🔒 Denuncia Anónima (Recomendado)", value=st.session_state.get("d_anon", True), key="d_anon_toggle")
             st.session_state["d_anon"] = anon
-            anon_bg = "linear-gradient(135deg,#ECFDF5,#D1FAE5)" if anon else "linear-gradient(135deg,#F5F3FF,#EDE9FE)"
+            anon_bg    = "linear-gradient(135deg,#ECFDF5,#D1FAE5)" if anon else "linear-gradient(135deg,#F5F3FF,#EDE9FE)"
             anon_color = "#059669" if anon else "#5B21B6"
             anon_label = "✅ Denuncia 100% Anónima — Tu identidad está protegida" if anon else "👤 Denuncia con Identidad"
             st.markdown(f"""<div style="background:{anon_bg};border-radius:14px;padding:12px 16px;
@@ -1781,12 +1865,12 @@ elif "📋" in page:
                 with c1:
                     d_delito = st.selectbox("⚖️ Tipo de Delito", ["— Selecciona —"] + DELITOS, key="d_delito")
                 with c2:
-                    d_dep = st.selectbox("🗺️ Departamento", DEPARTAMENTOS, key="d_dep")
+                    d_dep    = st.selectbox("🗺️ Departamento", DEPARTAMENTOS, key="d_dep")
                 c3, c4 = st.columns(2)
                 with c3:
                     d_fecha = st.date_input("📅 Fecha aproximada", key="d_fecha", value=None)
                 with c4:
-                    d_hora = st.time_input("🕐 Hora aproximada", key="d_hora", value=None)
+                    d_hora  = st.time_input("🕐 Hora aproximada", key="d_hora", value=None)
                 d_lugar = st.text_input("📍 Lugar del hecho", placeholder="Ej: Centro Comercial El Tesoro, Cll 45...", key="d_lugar")
                 st.markdown('<div style="font-size:12px;font-weight:700;color:#5B21B6;margin:14px 0 8px;">🚨 Nivel de Urgencia</div>', unsafe_allow_html=True)
                 urg_cols = st.columns(3)
@@ -1895,8 +1979,8 @@ Opciones seleccionadas: {', '.join(d_opts) if d_opts else 'Ninguna'}"""
                         <div style="font-size:10px;color:#A78BFA;font-weight:500;">{desc_e}</div>
                     </div>
                 </div></a>""", unsafe_allow_html=True)
-            razones = ["✅ Protege a otras mujeres","✅ Genera registros estadísticos","✅ Activa medidas de protección",
-                       "✅ Accedes a apoyo psicológico","✅ Rompe el ciclo de violencia"]
+            razones  = ["✅ Protege a otras mujeres","✅ Genera registros estadísticos","✅ Activa medidas de protección",
+                        "✅ Accedes a apoyo psicológico","✅ Rompe el ciclo de violencia"]
             r_html = "".join([f'<div style="font-size:12px;color:#1E1B4B;margin-bottom:8px;line-height:1.6;">{r}</div>' for r in razones])
             st.markdown(f'<div class="sh-card"><div style="font-size:13px;font-weight:800;color:#5B21B6;margin-bottom:12px;">🧠 ¿Por qué es importante denunciar?</div>{r_html}</div>', unsafe_allow_html=True)
     else:
@@ -2030,7 +2114,7 @@ FORMATO: Español cálido y cercano, máx 200 palabras, emojis con moderación (
                         display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;margin-top:2px;">👤</div>
                 </div>"""
             else:
-                content = msg['content'].replace('\n', '<br>')
+                content   = msg['content'].replace('\n', '<br>')
                 msgs_html += f"""<div style="display:flex;gap:10px;margin-bottom:16px;">
                     <div style="width:34px;height:34px;background:linear-gradient(135deg,#1E1B4B,#7C3AED);border-radius:50%;
                         display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;margin-top:2px;
@@ -2053,7 +2137,7 @@ FORMATO: Español cálido y cercano, máx 200 palabras, emojis con moderación (
                     st.session_state.sara_messages.append({"role": "user", "content": q})
                     with st.spinner("SARA está escribiendo..."):
                         history = [{"role": m["role"], "content": m["content"]} for m in st.session_state.sara_messages]
-                        reply = call_claude(SARA_SYSTEM, "", history=history)
+                        reply   = call_claude(SARA_SYSTEM, "", history=history)
                     st.session_state.sara_messages.append({"role": "assistant", "content": reply})
                     st.rerun()
 
@@ -2069,7 +2153,7 @@ FORMATO: Español cálido y cercano, máx 200 palabras, emojis con moderación (
             st.session_state.sara_messages.append({"role": "user", "content": user_input.strip()})
             with st.spinner("SARA está escribiendo..."):
                 history = [{"role": m["role"], "content": m["content"]} for m in st.session_state.sara_messages]
-                reply = call_claude(SARA_SYSTEM, "", history=history)
+                reply   = call_claude(SARA_SYSTEM, "", history=history)
             st.session_state.sara_messages.append({"role": "assistant", "content": reply})
             st.rerun()
 
@@ -2111,8 +2195,8 @@ elif "🚔" in page:
     ]
 
     filter_tipo = st.selectbox("🔍 Filtrar por tipo de entidad:", ["Todos","Policía","Hospitales","Fiscalía","Refugios","Psicología"], key="ayuda_filter")
-    filter_map = {"Todos":"Todos","Policía":"Policía","Hospitales":"Hospital","Fiscalía":"Fiscalía","Refugios":"Refugio","Psicología":"Psicología"}
-    filtered = [e for e in entidades if filter_tipo == "Todos" or e["tipo"] == filter_map[filter_tipo]]
+    filter_map  = {"Todos":"Todos","Policía":"Policía","Hospitales":"Hospital","Fiscalía":"Fiscalía","Refugios":"Refugio","Psicología":"Psicología"}
+    filtered    = [e for e in entidades if filter_tipo == "Todos" or e["tipo"] == filter_map[filter_tipo]]
 
     st.markdown(f'<div style="font-size:12px;color:#6B7280;margin-bottom:16px;"><strong style="color:#1E1B4B;">{len(filtered)}</strong> lugares de apoyo cerca de <strong style="color:#1E1B4B;">{city_input}</strong></div>', unsafe_allow_html=True)
 
@@ -2150,7 +2234,7 @@ elif "🚔" in page:
 
     with col_ent:
         sel_nom = st.session_state.get("selected_entity")
-        sel_e = next((e for e in entidades if e["nom"] == sel_nom), None)
+        sel_e   = next((e for e in entidades if e["nom"] == sel_nom), None)
         if sel_e:
             st.markdown(f"""<div class="sh-card" style="position:sticky;top:20px;">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
@@ -2162,40 +2246,34 @@ elif "🚔" in page:
                 <div style="font-size:19px;font-weight:900;color:#1E1B4B;margin-bottom:6px;">{sel_e['nom']}</div>
                 <p style="font-size:12px;color:#6B7280;line-height:1.7;margin-bottom:18px;">{sel_e['desc']}</p>""",
                 unsafe_allow_html=True)
-
             for label, val in [("📍 Dirección", sel_e['dir']),("🏘️ Barrio", sel_e['barrio']),("🕐 Horario", sel_e['horario']),("📞 Contacto", sel_e['phone'])]:
                 st.markdown(f"""<div style="display:flex;justify-content:space-between;padding:9px 12px;
                     background:linear-gradient(135deg,#F5F3FF,#EDE9FE);border-radius:12px;margin-bottom:8px;">
                     <span style="font-size:11px;color:#A78BFA;font-weight:600;">{label}</span>
                     <span style="font-size:11px;font-weight:800;color:#1E1B4B;text-align:right;max-width:55%;">{val}</span>
                 </div>""", unsafe_allow_html=True)
-
             st.markdown(f"""<div style="background:linear-gradient(135deg,#EFF6FF,#DBEAFE);border-radius:14px;
                 padding:12px 14px;margin-bottom:14px;border:1px solid #BFDBFE;">
                 <div style="font-size:11px;font-weight:800;color:#1D4ED8;margin-bottom:5px;">🚌 Cómo llegar desde {city_input}</div>
                 <div style="font-size:11px;color:#1E40AF;line-height:1.7;">{sel_e['transporte']}</div>
             </div>""", unsafe_allow_html=True)
-
             st.markdown(f'<a href="{sel_e["href"]}" target="{"_blank" if sel_e["href"].startswith("http") else "_self"}" style="text-decoration:none;display:block;margin-bottom:8px;">'
                        f'<div style="width:100%;background:linear-gradient(135deg,{sel_e["color"]},{sel_e["color"]}CC);color:#fff;border-radius:14px;'
                        f'padding:13px;text-align:center;font-size:13px;font-weight:800;'
                        f'box-shadow:0 4px 14px {sel_e["color"]}44;">{"📞 Llamar: "+sel_e["phone"] if sel_e["href"].startswith("tel:") else "🌐 Visitar sitio web"}</div></a>',
                        unsafe_allow_html=True)
-
             maps_url = f"https://www.google.com/maps/dir/?api=1&destination={sel_e['dir'].replace(' ', '+')}&travelmode=transit"
             st.markdown(f'<a href="{maps_url}" target="_blank" style="text-decoration:none;display:block;margin-bottom:8px;">'
                        f'<div style="width:100%;background:#fff;color:#1D4ED8;border:1.5px solid #BFDBFE;border-radius:14px;'
                        f'padding:11px;text-align:center;font-size:12px;font-weight:700;">🗺️ Ruta en transporte público</div></a>',
                        unsafe_allow_html=True)
-
             if st.button(f"🤖 Instrucciones detalladas con IA", key="directions_btn", use_container_width=True):
                 with st.spinner("Calculando mejor ruta..."):
                     dir_text = call_claude(
-                        "Experto en transporte urbano de Colombia. Instrucciones claras con bullets y emojis. Incluye: TransMilenio/Metro/BRT, taxi/app, a pie. Máx 120 palabras. Incluye tiempo estimado.",
+                        "Experto en transporte urbano de Colombia. Instrucciones claras con bullets y emojis. Incluye: TransMilenio/Metro/BRT, taxi/app, a pie. Máx 120 palabras.",
                         f"¿Cómo llegar desde el centro de {city_input} hasta {sel_e['nom']} en {sel_e['dir']}, barrio {sel_e.get('barrio','')}, distancia ~{sel_e['dist']}?"
                     )
                     st.session_state[f"dir_{sel_e['nom']}"] = dir_text
-
             dir_r = st.session_state.get(f"dir_{sel_e['nom']}", "")
             if dir_r:
                 st.markdown(f"""<div style="background:linear-gradient(135deg,#F5F3FF,#EDE9FE);border-radius:14px;
@@ -2237,7 +2315,6 @@ elif "i️" in page:
             <p style="font-size:13px;color:#1E1B4B;line-height:1.85;margin-bottom:20px;">
                 Desarrollado como proyecto de <strong>Analítica y Machine Learning</strong>. Modelos entrenados con datos del
                 Sistema de Información Estadístico de la <strong>Policía Nacional de Colombia</strong>.
-                Plataforma integral de protección, prevención y apoyo para mujeres.
             </p>
             <div style="font-weight:800;color:#1E1B4B;margin-bottom:14px;font-size:14px;">👩‍💻 Equipo de Desarrollo:</div></div>""", unsafe_allow_html=True)
 
