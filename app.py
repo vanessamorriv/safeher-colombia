@@ -14,6 +14,8 @@ import plotly.graph_objects as go
 
 @st.cache_resource
 def load_models():
+    import pathlib
+    BASE_DIR = pathlib.Path(__file__).parent.resolve()
     models = {}
     files = {
         "xgb_zona":           "xgb_zona.pkl",
@@ -27,15 +29,13 @@ def load_models():
         "scaler_gravedad":    "scaler_gravedad.pkl",
     }
     for key, fname in files.items():
+        fpath = BASE_DIR / fname
         try:
-            with open(fname, "rb") as f:
+            with open(fpath, "rb") as f:
                 models[key] = pickle.load(f)
-        except Exception:
+        except Exception as e:
             models[key] = None
     return models
-
-MODELS = load_models()
-MODELS_OK = any(v is not None for v in MODELS.values())
 
 # ─── PAGE CONFIG ──────────────────────────────────────────────────────────────
 
