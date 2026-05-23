@@ -37,6 +37,8 @@ def load_models():
             models[key] = None
     return models
 
+MODELS = load_models()
+MODELS_OK = any(v is not None for v in MODELS.values())
 # ─── PAGE CONFIG ──────────────────────────────────────────────────────────────
 
 st.set_page_config(
@@ -522,6 +524,7 @@ def call_claude(system_prompt, user_msg, history=None):
 # ─── PREDICCIÓN ML (CORREGIDA) ────────────────────────────────────────────────
 
 def calc_prediction(dep, mun, delito, sexo, etario, año):
+    MODELS = load_models()
     # ── Fallback sintético (siempre se calcula primero como respaldo) ─────────
     base       = CRIME_DATA.get(dep, {"score": 3.0, "zona": "MEDIO-BAJO", "gravedad": "BAJO", "municipios": 10})
     año_factor = 1.05 if año >= 2024 else (1.0 if año >= 2020 else 0.9)
